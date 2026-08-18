@@ -1,0 +1,106 @@
+# RouteLatch
+
+**Stay on your route.**  
+GPX Navigation for Runners
+
+RouteLatch is a native SwiftUI iPhone and Apple Watch MVP. Import a GPX course on iPhone, inspect and persist it, queue a normalized copy with WatchConnectivity, then navigate independently on Apple Watch with live route deviation, progress, haptics, heart rate, and an outdoor running workout.
+
+For device testing, both apps bundle `Resources/DefaultRoute.gpx` (Spartacus 2025 – Terep XL). Each app installs it into its own route store once on first launch. Deleting the seeded route does not recreate it on subsequent launches; deleting/reinstalling the app resets the seed marker.
+
+> Imported GPX courses stay inside RouteLatch. Apple provides no public API for importing arbitrary GPX geometry into the built-in Workout app. RouteLatch records only the runner’s actual Core Location samples into a HealthKit workout route—never imported GPX points.
+
+## Architecture
+
+- `RouteLatch.xcodeproj`: native iOS and watchOS application targets and shared schemes.
+- `Packages/RouteLatchCore`: local Swift package used by both apps. It owns Codable/Sendable route models, streaming GPX parsing, calculations, matching, hysteresis, persistence, and versioned transfer serialization.
+- `iOS`: route library, security-scoped file import, document opening, route detail map, and phone-side WatchConnectivity.
+- `Watch`: offline route library, receipt/persistence, map and metrics navigation, Core Location, haptics, and HealthKit workout recording.
+- `Resources/DefaultRoute.gpx`: temporary first-launch test course embedded in both application bundles.
+
+Dependencies are passed through view models and small services. Apple coordinators are wrapped outside the views. UI state is main-actor isolated, and the reusable core is `Sendable`.
+
+## Supported GPX
+
+The streaming Foundation `XMLParser` supports:
+
+- `trk`, `trkseg`, and `trkpt`;
+- `rte` and `rtept`;
+- route/track `name`, point `ele`, and ISO-8601 `time`;
+- multiple segments, route-only documents, and XML namespace prefixes.
+
+Segment boundaries are preserved, so disconnected segments are not joined visually or in distance calculations. Coordinates are range-validated. Empty, malformed, missing-coordinate, and oversized files return user-visible errors. The default safety limit is 100,000 points (`GPXParser.defaultMaximumPointCount`). SHA-256 fingerprints detect duplicate imports.
+
+The importer requests security-scoped access, copies the GPX into `Application Support/RouteLatch/OriginalGPX`, releases external access, and parses only the app-owned copy. Normalized `.route` files use atomic writes under `Application Support/RouteLatch/Routes`. A corrupt route file is isolated rather than preventing all routes from loading.
+
+## Route deviation and progress
+
+`RouteMatcher` projects the current location onto route line segments in a local metre coordinate space; it does not merely select the closest stored point. It tracks the previous edge and searches an 80-edge moving window, with a full-route fallback when the local match is more than 150 m away. Accumulated edge distance determines progress and remaining course distance. Disconnected segment gaps are excluded.
+
+Samples worse than 75 m horizontal accuracy are ignored. Off-course alerts enter above 40 m, clear below 25 m, and repeat no more often than every 20 seconds. Return-to-route and finish haptics are distinct, with the finish signal emitted once per guidance session. These constants live in `RouteMatcher` and `OffCourseAlertState`.
+
+## Required capabilities and privacy
+
+Both targets use Apple Developer team `595EKYS652` with automatic signing and these checked-in identifiers:
+
+- iPhone: `com.gergokondor.RouteLatchApp`
+- Watch: `com.gergokondor.RouteLatchApp.watchkitapp`
+- Watch companion: `com.gergokondor.RouteLatchApp`
+
+Separate opaque App Store icon sets are included for iOS and watchOS. Their editable SVG sources are in `Resources/IconSources`.
+
+Enable these capabilities for the Watch target:
+
+- HealthKit;
+- Background Modes → Workout processing.
+
+The checked-in Watch entitlements declare HealthKit. The Watch Info.plist includes:
+
+- `NSHealthShareUsageDescription` for live heart rate;
+- `NSHealthUpdateUsageDescription` for the workout and actual route;
+- `NSLocationWhenInUseUsageDescription` for guidance;
+- `WKBackgroundModes` with `workout-processing`.
+
+WatchConnectivity needs matching signing teams and the companion bundle relationship; it does not require immediate reachability. The phone uses `transferFile`, and the Watch immediately decodes/copies the temporary received file into its own store. Duplicate receipt is idempotent because route IDs map to stable filenames.
+
+## Build and test
+
+Open `RouteLatch.xcodeproj` in Xcode 26.6 or newer. The deployment targets are iOS 17 and watchOS 10 because the UI uses modern SwiftUI Map content such as `MapPolyline`.
+
+Command-line checks used for this repository:
+
+```sh
+swift test --package-path Packages/RouteLatchCore
+xcodebuild -project RouteLatch.xcodeproj -target 'RouteLatch Watch App' -configuration Debug CODE_SIGNING_ALLOWED=NO build
+xcodebuild -project RouteLatch.xcodeproj -target RouteLatch -configuration Debug CODE_SIGNING_ALLOWED=NO build
+```
+
+The local Xcode installation exposes iOS/watchOS 26.5 SDKs but has no bootable simulator runtimes, so validation used signing-disabled device-SDK builds. Install simulator runtimes from Xcode Settings → Components to run previews/simulators. HealthKit workout sessions, WatchConnectivity delivery, haptics, live heart rate, background location behavior, and workout-route saving ultimately require a physical paired iPhone and Apple Watch.
+
+## Run on a paired iPhone and Apple Watch
+
+1. Confirm that Xcode is signed in to the Apple Developer account that owns team `595EKYS652`; both targets already use that team and the RouteLatch bundle IDs.
+2. Confirm HealthKit and workout-processing capabilities on the Watch target.
+3. Select the paired iPhone/Watch run destination in Xcode and install the iPhone scheme.
+4. Launch both apps once so WatchConnectivity activates.
+5. Import a `.gpx` with the iPhone file picker or open/share one into RouteLatch.
+6. Open the route, tap **Send to Apple Watch**, and allow background delivery time.
+7. On Watch, open the local route and tap **Start Guidance**. Accept Health and Location prompts.
+
+## Manual outdoor QA
+
+- Import track, route-only, namespaced, multi-segment, malformed, duplicate, and large GPX samples.
+- Confirm route framing, start/finish markers, distance/ascent, rename, persistence, deletion, and Dynamic Type in light/dark mode.
+- Queue a route while the Watch app is inactive; later verify offline receipt and selection with the phone out of range.
+- Start, pause, resume, and finish a run; confirm elapsed time and heart rate are plausible.
+- Move beyond 40 m, hover between 25–40 m, and return below 25 m; verify alert, cooldown, hysteresis, and visible non-color status.
+- Confirm the saved Health workout contains only locations actually visited.
+- Test loops, out-and-backs, starting midway, start-near-finish courses, poor GPS, stationary drift, and disconnected segments.
+- Measure battery behavior on a representative long run.
+
+## Known MVP limitations
+
+- This is route-line guidance, not turn-by-turn navigation; generic GPX files do not contain dependable turn instructions.
+- Base-map tiles may need network access. Stored geometry, matching, progress, metrics, and warnings remain offline.
+- Transfer completion means WatchConnectivity accepted/delivered the file callback; the platform does not provide a rich remote installation progress API.
+- The original imported GPX is retained for provenance; normalized routes are separately stored on phone and Watch.
+- Physical-device behavior, permission prompts, background execution, haptic feel, and actual HealthKit route saving cannot be fully automated on this machine.
