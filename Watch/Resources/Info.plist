@@ -36,5 +36,7 @@
 	<string>com.gergokondor.RouteLatchApp</string>
 	<key>WKWatchOnly</key>
 	<false/>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 </dict>
 </plist>
