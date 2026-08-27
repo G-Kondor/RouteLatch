@@ -16,6 +16,7 @@ final class WatchRouteLibraryModel: ObservableObject {
         seedBundledRouteIfNeeded()
         connectivity = WatchConnectivityManager(store: store)
         connectivity.onRouteReceived = { [weak self] in self?.reload() }
+        connectivity.onTransferError = { [weak self] message in self?.errorMessage = "A route could not be received: \(message)" }
         reload()
     }
 
@@ -35,8 +36,27 @@ final class WatchRouteLibraryModel: ObservableObject {
         }
     }
 
-    func reload() { routes = store.loadAll().routes }
+    func reload() {
+        let result = store.loadAll()
+        routes = result.routes
+        if !result.issues.isEmpty {
+            errorMessage = "Skipped \(result.issues.count) damaged route file(s)."
+        }
+    }
     func delete(_ route: Route) {
         do { try store.delete(route); reload() } catch { errorMessage = error.localizedDescription }
+    }
+
+    func setTargetPace(_ secondsPerKilometer: Double?, for route: Route) {
+        guard let index = routes.firstIndex(where: { $0.id == route.id }),
+              secondsPerKilometer.map(PaceGoalConfiguration.isValid) ?? true else { return }
+        var updated = routes[index]
+        updated.targetPaceSecondsPerKilometer = secondsPerKilometer
+        do {
+            try store.save(updated)
+            routes[index] = updated
+        } catch {
+            errorMessage = "The target pace could not be saved: \(error.localizedDescription)"
+        }
     }
 }

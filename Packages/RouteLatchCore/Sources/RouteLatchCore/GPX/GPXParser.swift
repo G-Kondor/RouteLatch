@@ -14,6 +14,7 @@ public struct GPXParser: Sendable {
 
     public func parse(url: URL) throws -> Route {
         guard let parser = XMLParser(contentsOf: url) else { throw GPXError.unreadableFile }
+        parser.shouldResolveExternalEntities = false
         let delegate = GPXDelegate(maximumPointCount: maximumPointCount)
         parser.delegate = delegate
         let parsed = parser.parse()
@@ -24,6 +25,7 @@ public struct GPXParser: Sendable {
 
     public func parse(data: Data, filename: String = "Imported.gpx") throws -> Route {
         let parser = XMLParser(data: data)
+        parser.shouldResolveExternalEntities = false
         let delegate = GPXDelegate(maximumPointCount: maximumPointCount)
         parser.delegate = delegate
         let parsed = parser.parse()
@@ -91,6 +93,10 @@ private final class GPXDelegate: NSObject, XMLParserDelegate {
 
     func parser(_ parser: XMLParser, foundCharacters string: String) { text += string }
 
+    func parser(_ parser: XMLParser, foundCDATA CDATABlock: Data) {
+        text += String(decoding: CDATABlock, as: UTF8.self)
+    }
+
     func parser(_ parser: XMLParser, didEndElement elementName: String, namespaceURI: String?, qualifiedName qName: String?) {
         let name = normalized(elementName)
         let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -122,7 +128,7 @@ private final class GPXDelegate: NSObject, XMLParserDelegate {
 
     func makeRoute(filename: String, fingerprint: String) throws -> Route {
         if !routeSegment.isEmpty { segments.append(routeSegment) }
-        guard !segments.isEmpty else { throw GPXError.emptyRoute }
+        guard segments.contains(where: { $0.count >= 2 }) else { throw GPXError.emptyRoute }
         let fallback = URL(fileURLWithPath: filename).deletingPathExtension().lastPathComponent
         return try Route(name: routeName ?? fallback, originalFilename: filename, segments: segments.map(RouteSegment.init), sourceFingerprint: fingerprint)
     }

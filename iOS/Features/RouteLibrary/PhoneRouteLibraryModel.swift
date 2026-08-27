@@ -1,11 +1,15 @@
 import Combine
 import Foundation
+import OSLog
 import RouteLatchCore
+
+private let phoneLibraryLogger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "RouteLatch", category: "RouteLibrary")
 
 @MainActor
 final class PhoneRouteLibraryModel: ObservableObject {
     private static let bundledRouteSeedKey = "BundledRoute.Spartacus2025XL.v1.seeded"
     @Published private(set) var routes: [Route] = []
+    @Published private(set) var isImporting = false
     @Published var errorMessage: String?
     @Published var storageWarning: String?
     let connectivity = PhoneConnectivityManager()
@@ -45,12 +49,37 @@ final class PhoneRouteLibraryModel: ObservableObject {
     }
 
     func importRoute(from url: URL) {
-        do { let route = try importer.importRoute(from: url); try store.save(route); reload() }
-        catch { errorMessage = error.localizedDescription }
+        guard !isImporting else {
+            errorMessage = "Another GPX import is already in progress."
+            return
+        }
+        isImporting = true
+        let importer = self.importer
+        Task {
+            defer { isImporting = false }
+            do {
+                let route = try await Task.detached(priority: .userInitiated) {
+                    try importer.importRoute(from: url)
+                }.value
+                do { try store.save(route) }
+                catch { importer.removeProvenance(for: route); throw error }
+                reload()
+            } catch {
+                phoneLibraryLogger.error("Route import failed: \(error.localizedDescription, privacy: .public)")
+                errorMessage = error.localizedDescription
+            }
+        }
     }
 
     func delete(_ route: Route) {
-        do { try store.delete(route); reload() } catch { errorMessage = error.localizedDescription }
+        do {
+            try store.delete(route)
+            importer.removeProvenance(for: route)
+            reload()
+        } catch {
+            phoneLibraryLogger.error("Route deletion failed: \(error.localizedDescription, privacy: .public)")
+            errorMessage = error.localizedDescription
+        }
     }
 
     func rename(_ route: Route, to name: String) {
@@ -58,6 +87,32 @@ final class PhoneRouteLibraryModel: ObservableObject {
         var updated = route
         updated.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !updated.name.isEmpty else { return }
-        do { try store.save(updated); routes[index] = updated } catch { errorMessage = error.localizedDescription }
+        do {
+            try store.save(updated)
+            routes[index] = updated
+            connectivity.markRouteChanged(updated.id)
+        }
+        catch {
+            phoneLibraryLogger.error("Route rename failed: \(error.localizedDescription, privacy: .public)")
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func setTargetPace(_ secondsPerKilometer: Double?, for route: Route) {
+        guard let index = routes.firstIndex(where: { $0.id == route.id }) else { return }
+        guard secondsPerKilometer.map(PaceGoalConfiguration.isValid) ?? true else {
+            errorMessage = "Choose a target pace between 3:00 and 15:00 per kilometre."
+            return
+        }
+        var updated = routes[index]
+        updated.targetPaceSecondsPerKilometer = secondsPerKilometer
+        do {
+            try store.save(updated)
+            routes[index] = updated
+            connectivity.markRouteChanged(updated.id)
+        } catch {
+            phoneLibraryLogger.error("Target pace save failed: \(error.localizedDescription, privacy: .public)")
+            errorMessage = error.localizedDescription
+        }
     }
 }

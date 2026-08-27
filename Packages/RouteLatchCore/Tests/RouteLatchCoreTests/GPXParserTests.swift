@@ -41,6 +41,23 @@ final class GPXParserTests: XCTestCase {
         XCTAssertThrowsError(try GPXParser().parse(data: Data("<gpx><trk><trkseg/></trk></gpx>".utf8))) { XCTAssertEqual($0 as? GPXError, .emptyRoute) }
     }
 
+    func testSinglePointRouteIsRejectedAsUnusable() {
+        let data = Data("<gpx><rte><rtept lat=\"47\" lon=\"19\"/></rte></gpx>".utf8)
+        XCTAssertThrowsError(try GPXParser().parse(data: data)) { XCTAssertEqual($0 as? GPXError, .emptyRoute) }
+    }
+
+    func testCDATANameAndFractionalTimestamp() throws {
+        let xml = """
+        <gpx><trk><name><![CDATA[Forest & Ridge]]></name><trkseg>
+        <trkpt lat="47" lon="19"><time>2026-08-27T10:15:30.125Z</time></trkpt>
+        <trkpt lat="47.001" lon="19.001"/>
+        </trkseg></trk></gpx>
+        """
+        let route = try GPXParser().parse(data: Data(xml.utf8))
+        XCTAssertEqual(route.name, "Forest & Ridge")
+        XCTAssertNotNil(route.start.timestamp)
+    }
+
     func testOversizedInput() {
         let data = Data("<gpx><rte><rtept lat=\"47\" lon=\"19\"/><rtept lat=\"47.1\" lon=\"19.1\"/></rte></gpx>".utf8)
         XCTAssertThrowsError(try GPXParser(maximumPointCount: 1).parse(data: data)) { XCTAssertEqual($0 as? GPXError, .tooManyPoints(1)) }

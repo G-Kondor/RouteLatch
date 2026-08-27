@@ -11,11 +11,19 @@ struct WatchRouteLibraryView: View {
                 } else {
                     List(model.routes) { route in
                         NavigationLink {
-                            WatchRouteDetailView(route: route, onDelete: { model.delete(route) })
+                            WatchRouteDetailView(
+                                route: route,
+                                onDelete: { model.delete(route) },
+                                onPaceChange: { model.setTargetPace($0, for: route) }
+                            )
                         } label: {
                             VStack(alignment: .leading) {
                                 Text(route.name).font(.headline).lineLimit(2)
                                 Label(watchDistance(route.totalDistance), systemImage: "checkmark.circle.fill").font(.caption).foregroundStyle(.secondary)
+                                if let target = route.targetPaceSecondsPerKilometer {
+                                    Label(watchPace(target), systemImage: "speedometer")
+                                        .font(.caption2).foregroundStyle(.orange)
+                                }
                             }
                         }
                     }
@@ -27,9 +35,23 @@ struct WatchRouteLibraryView: View {
 }
 
 struct WatchRouteDetailView: View {
-    let route: Route
     let onDelete: () -> Void
+    let onPaceChange: (Double?) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var route: Route
     @State private var showNavigation = false
+    @State private var confirmingDelete = false
+    @State private var paceAlertsEnabled: Bool
+    @State private var targetPace: Double
+
+    init(route: Route, onDelete: @escaping () -> Void, onPaceChange: @escaping (Double?) -> Void) {
+        self.onDelete = onDelete
+        self.onPaceChange = onPaceChange
+        _route = State(initialValue: route)
+        _paceAlertsEnabled = State(initialValue: route.targetPaceSecondsPerKilometer != nil)
+        _targetPace = State(initialValue: route.targetPaceSecondsPerKilometer ?? PaceGoalConfiguration.defaultSecondsPerKilometer)
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 12) {
@@ -37,11 +59,54 @@ struct WatchRouteDetailView: View {
                 Text(route.name).font(.headline).multilineTextAlignment(.center)
                 Text(watchDistance(route.totalDistance)).font(.title3.bold())
                 Text("\(route.pointCount) points • \(route.segments.count) segments").font(.caption).foregroundStyle(.secondary)
+                Divider()
+                Toggle("Pace alerts", isOn: $paceAlertsEnabled)
+                    .onChange(of: paceAlertsEnabled) { _, _ in savePaceGoal() }
+                Text(watchPace(targetPace))
+                    .font(.title3.bold().monospacedDigit())
+                    .foregroundStyle(paceAlertsEnabled ? .primary : .secondary)
+                Slider(
+                    value: $targetPace,
+                    in: PaceGoalConfiguration.minimumSecondsPerKilometer...PaceGoalConfiguration.maximumSecondsPerKilometer,
+                    step: PaceGoalConfiguration.sliderStep,
+                    onEditingChanged: { editing in if !editing { savePaceGoal() } }
+                )
+                .disabled(!paceAlertsEnabled)
+                .accessibilityLabel("Target pace")
+                .accessibilityValue(watchPace(targetPace))
+                if paceAlertsEnabled {
+                    Text("Plan: \(watchDuration(route.totalDistance / 1_000 * targetPace))")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 Button("Start Guidance", systemImage: "location.fill") { showNavigation = true }.buttonStyle(.borderedProminent)
-                Button("Delete Watch Copy", systemImage: "trash", role: .destructive) { onDelete() }
+                Button("Delete Watch Copy", systemImage: "trash", role: .destructive) { confirmingDelete = true }
             }
-        }.navigationDestination(isPresented: $showNavigation) { NavigationView(route: route) }
+        }
+        .navigationDestination(isPresented: $showNavigation) { NavigationView(route: route) }
+        .alert("Delete Watch Copy?", isPresented: $confirmingDelete) {
+            Button("Delete", role: .destructive) { onDelete(); dismiss() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This removes only the copy stored on Apple Watch.")
+        }
+    }
+
+    private func savePaceGoal() {
+        route.targetPaceSecondsPerKilometer = paceAlertsEnabled ? targetPace : nil
+        onPaceChange(route.targetPaceSecondsPerKilometer)
     }
 }
 
 func watchDistance(_ meters: Double) -> String { meters >= 1000 ? String(format: "%.1f km", meters / 1000) : String(format: "%.0f m", meters) }
+func watchPace(_ seconds: Double) -> String {
+    guard seconds.isFinite, seconds > 0 else { return "—" }
+    let rounded = Int(seconds.rounded())
+    return String(format: "%d:%02d /km", rounded / 60, rounded % 60)
+}
+func watchDuration(_ seconds: Double) -> String {
+    guard seconds.isFinite, seconds >= 0 else { return "—" }
+    let rounded = Int(seconds.rounded())
+    return rounded >= 3_600
+        ? String(format: "%d:%02d:%02d", rounded / 3_600, rounded % 3_600 / 60, rounded % 60)
+        : String(format: "%d:%02d", rounded / 60, rounded % 60)
+}

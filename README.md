@@ -3,7 +3,7 @@
 **Stay on your route.**  
 GPX Navigation for Runners
 
-RouteLatch is a native SwiftUI iPhone and Apple Watch MVP. Import a GPX course on iPhone, inspect and persist it, queue a normalized copy with WatchConnectivity, then navigate independently on Apple Watch with live route deviation, progress, haptics, heart rate, and an outdoor running workout.
+RouteLatch is a native SwiftUI iPhone and Apple Watch MVP. Import a GPX course on iPhone, inspect and persist it, set a target pace, queue a normalized copy with WatchConnectivity, then navigate independently on Apple Watch with live route deviation, pace-plan feedback, progress, haptics, heart rate, and an outdoor running workout.
 
 For device testing, both apps bundle `Resources/DefaultRoute.gpx` (Spartacus 2025 – Terep XL). Each app installs it into its own route store once on first launch. Deleting the seeded route does not recreate it on subsequent launches; deleting/reinstalling the app resets the seed marker.
 
@@ -30,13 +30,21 @@ The streaming Foundation `XMLParser` supports:
 
 Segment boundaries are preserved, so disconnected segments are not joined visually or in distance calculations. Coordinates are range-validated. Empty, malformed, missing-coordinate, and oversized files return user-visible errors. The default safety limit is 100,000 points (`GPXParser.defaultMaximumPointCount`). SHA-256 fingerprints detect duplicate imports.
 
-The importer requests security-scoped access, copies the GPX into `Application Support/RouteLatch/OriginalGPX`, releases external access, and parses only the app-owned copy. Normalized `.route` files use atomic writes under `Application Support/RouteLatch/Routes`. A corrupt route file is isolated rather than preventing all routes from loading.
+The importer requests security-scoped access, copies the GPX into `Application Support/RouteLatch/OriginalGPX/<route-id>/`, releases external access, and parses only the app-owned copy. The original filename is preserved, and failed, duplicate, or deleted imports clean up their provenance copy. Normalized `.route` files use atomic writes under `Application Support/RouteLatch/Routes`. A corrupt route file is isolated rather than preventing all routes from loading.
+
+Normalized transfer payloads are size-, point-, coordinate-, and schema-validated on receipt. Routes above 20,000 points are simplified per GPX segment with an iterative Ramer–Douglas–Peucker pass, starting at 3 m and never exceeding 12 m tolerance, before transfer to keep Watch rendering and matching efficient. If unusually noisy geometry cannot meet the Watch limit safely, transfer fails with a clear error instead of silently degrading guidance. The phone retains the full imported geometry.
 
 ## Route deviation and progress
 
-`RouteMatcher` projects the current location onto route line segments in a local metre coordinate space; it does not merely select the closest stored point. It tracks the previous edge and searches an 80-edge moving window, with a full-route fallback when the local match is more than 150 m away. Accumulated edge distance determines progress and remaining course distance. Disconnected segment gaps are excluded.
+`RouteMatcher` projects the current location onto route line segments in a local metre coordinate space; it does not merely select the closest stored point. It tracks the previous edge and searches an 80-edge moving window, with a full-route fallback when the local match is more than 150 m away. Spatial ties prefer continuous forward edges, which resolves common loop and out-and-back overlap ambiguity. Projection also handles antimeridian-crossing geometry. Accumulated edge distance determines progress and remaining course distance. Disconnected segment gaps are excluded.
 
 Samples worse than 75 m horizontal accuracy are ignored. Off-course alerts enter above 40 m, clear below 25 m, and repeat no more often than every 20 seconds. Return-to-route and finish haptics are distinct, with the finish signal emitted once per guidance session. These constants live in `RouteMatcher` and `OffCourseAlertState`.
+
+## Target pace and schedule alerts
+
+Each route can store an optional target pace from 3:00 to 15:00 min/km in five-second steps. The iPhone route detail screen shows a slider and the planned running time. The setting travels inside the normalized route when **Send to Apple Watch** is used. Changing the phone setting marks the Watch copy as stale until it is sent again. The Watch route detail screen can also change its local copy immediately before a run without a phone.
+
+During guidance, RouteLatch calculates average course pace from active workout time and forward distance matched along the selected route. Paused time is excluded. It shows target pace, average pace, schedule advantage/delay, and projected duration. To avoid noisy start alerts, pace warnings become eligible only after 500 m and three active minutes. The Watch enters a yellow **BEHIND GOAL** state and plays a pace haptic when average pace is more than 10% slower than the target, clears after recovering to within 5%, and repeats at most every two minutes. A red off-course warning always takes visual and haptic priority.
 
 ## Required capabilities and privacy
 
@@ -60,7 +68,7 @@ The checked-in Watch entitlements declare HealthKit. The Watch Info.plist includ
 - `NSLocationWhenInUseUsageDescription` for guidance;
 - `WKBackgroundModes` with `workout-processing`.
 
-WatchConnectivity needs matching signing teams and the companion bundle relationship; it does not require immediate reachability. The phone uses `transferFile`, and the Watch immediately decodes/copies the temporary received file into its own store. Duplicate receipt is idempotent because route IDs map to stable filenames.
+WatchConnectivity needs matching signing teams and the companion bundle relationship; it does not require immediate reachability. The phone uses `transferFile`, and the Watch immediately decodes/copies the temporary received file into its own store. Duplicate receipt is idempotent because route IDs map to stable filenames. After persistence, the Watch queues a background receipt acknowledgement so the phone distinguishes “transferred” from “available on Apple Watch.”
 
 ## Build and test
 
@@ -74,7 +82,7 @@ xcodebuild -project RouteLatch.xcodeproj -target 'RouteLatch Watch App' -configu
 xcodebuild -project RouteLatch.xcodeproj -target RouteLatch -configuration Debug CODE_SIGNING_ALLOWED=NO build
 ```
 
-The local Xcode installation exposes iOS/watchOS 26.5 SDKs but has no bootable simulator runtimes, so validation used signing-disabled device-SDK builds. Install simulator runtimes from Xcode Settings → Components to run previews/simulators. HealthKit workout sessions, WatchConnectivity delivery, haptics, live heart rate, background location behavior, and workout-route saving ultimately require a physical paired iPhone and Apple Watch.
+The local Xcode installation includes iOS 17.5/26.5 and watchOS 26.5 simulator runtimes. The iPhone 17 Pro and Apple Watch Series 11 simulator builds were installed and launched successfully, and their seeded route-library screens were visually checked. Simulators are useful for import, persistence, maps, layout, and state UI, but HealthKit workout sessions, real WatchConnectivity delivery, haptics, live heart rate, background location behavior, GPS quality, and workout-route saving ultimately require a physical paired iPhone and Apple Watch.
 
 ## Run on a paired iPhone and Apple Watch
 
@@ -84,7 +92,8 @@ The local Xcode installation exposes iOS/watchOS 26.5 SDKs but has no bootable s
 4. Launch both apps once so WatchConnectivity activates.
 5. Import a `.gpx` with the iPhone file picker or open/share one into RouteLatch.
 6. Open the route, tap **Send to Apple Watch**, and allow background delivery time.
-7. On Watch, open the local route and tap **Start Guidance**. Accept Health and Location prompts.
+7. Optionally enable **Target pace alerts**, set the min/km slider, and send the updated route. The goal can also be adjusted on the Watch route screen.
+8. On Watch, open the local route and tap **Start Guidance**. Accept Health and Location prompts.
 
 ## Manual outdoor QA
 
@@ -92,6 +101,8 @@ The local Xcode installation exposes iOS/watchOS 26.5 SDKs but has no bootable s
 - Confirm route framing, start/finish markers, distance/ascent, rename, persistence, deletion, and Dynamic Type in light/dark mode.
 - Queue a route while the Watch app is inactive; later verify offline receipt and selection with the phone out of range.
 - Start, pause, resume, and finish a run; confirm elapsed time and heart rate are plausible.
+- Set a target pace on iPhone, transfer it, and confirm the same value and planned duration on Watch. Change it locally on Watch and confirm it persists after relaunch.
+- Run behind the target after the 500 m/3-minute warm-up, recover into the 5% band, and verify yellow status, schedule delta, projected duration, warning/recovery haptics, and cooldown.
 - Move beyond 40 m, hover between 25–40 m, and return below 25 m; verify alert, cooldown, hysteresis, and visible non-color status.
 - Confirm the saved Health workout contains only locations actually visited.
 - Test loops, out-and-backs, starting midway, start-near-finish courses, poor GPS, stationary drift, and disconnected segments.
@@ -101,6 +112,7 @@ The local Xcode installation exposes iOS/watchOS 26.5 SDKs but has no bootable s
 
 - This is route-line guidance, not turn-by-turn navigation; generic GPX files do not contain dependable turn instructions.
 - Base-map tiles may need network access. Stored geometry, matching, progress, metrics, and warnings remain offline.
-- Transfer completion means WatchConnectivity accepted/delivered the file callback; the platform does not provide a rich remote installation progress API.
+- Transfer progress is intentionally coarse: queued, transferred, and Watch-persisted acknowledgement. WatchConnectivity does not provide byte-level remote progress.
 - The original imported GPX is retained for provenance; normalized routes are separately stored on phone and Watch.
+- Pace uses route-matched forward progress rather than raw GPS workout distance. This is useful for course planning but is not an adaptive training plan and does not account for grade, terrain, aid stations, or split-specific pacing.
 - Physical-device behavior, permission prompts, background execution, haptic feel, and actual HealthKit route saving cannot be fully automated on this machine.

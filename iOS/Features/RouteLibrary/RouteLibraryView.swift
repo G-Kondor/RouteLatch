@@ -28,6 +28,11 @@ struct RouteLibraryView: View {
                                     Spacer()
                                     Text(model.connectivity.status(for: route).label).font(.caption).foregroundStyle(.secondary)
                                 }.font(.subheadline).foregroundStyle(.secondary)
+                                if let target = route.targetPaceSecondsPerKilometer {
+                                    Label(routeListPace(target), systemImage: "speedometer")
+                                        .font(.caption)
+                                        .foregroundStyle(.orange)
+                                }
                             }.padding(.vertical, 4)
                         }
                         .swipeActions(edge: .leading) { Button("Rename", systemImage: "pencil") { routeToRename = route; newName = route.name }.tint(.blue) }
@@ -37,7 +42,10 @@ struct RouteLibraryView: View {
             }
             .navigationTitle("RouteLatch")
             .navigationDestination(for: Route.self) { RouteDetailView(route: $0, model: model) }
-            .toolbar { Button("Import GPX", systemImage: "square.and.arrow.down") { importing = true }.accessibilityHint("Choose a GPX course file") }
+            .toolbar {
+                if model.isImporting { ProgressView().accessibilityLabel("Importing GPX") }
+                else { Button("Import GPX", systemImage: "square.and.arrow.down") { importing = true }.accessibilityHint("Choose a GPX course file") }
+            }
             .fileImporter(isPresented: $importing, allowedContentTypes: [.gpx, .xml], allowsMultipleSelection: false) { result in
                 if case .success(let urls) = result, let url = urls.first { model.importRoute(from: url) }
                 if case .failure(let error) = result { model.errorMessage = error.localizedDescription }
@@ -54,6 +62,11 @@ struct RouteLibraryView: View {
             }
             .safeAreaInset(edge: .bottom) { if let warning = model.storageWarning { Text(warning).font(.caption).padding(8).background(.thinMaterial).accessibilityLabel("Storage warning: \(warning)") } }
         }
+    }
+
+    private func routeListPace(_ seconds: Double) -> String {
+        let rounded = Int(seconds.rounded())
+        return String(format: "Target %d:%02d /km", rounded / 60, rounded % 60)
     }
 }
 

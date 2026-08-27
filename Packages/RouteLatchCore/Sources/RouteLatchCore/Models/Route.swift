@@ -1,5 +1,16 @@
 import Foundation
 
+public enum PaceGoalConfiguration {
+    public static let minimumSecondsPerKilometer = 3.0 * 60
+    public static let maximumSecondsPerKilometer = 15.0 * 60
+    public static let defaultSecondsPerKilometer = 6.0 * 60
+    public static let sliderStep = 5.0
+
+    public static func isValid(_ value: Double) -> Bool {
+        value.isFinite && (minimumSecondsPerKilometer...maximumSecondsPerKilometer).contains(value)
+    }
+}
+
 public struct RoutePoint: Codable, Hashable, Sendable {
     public let latitude: Double
     public let longitude: Double
@@ -51,16 +62,32 @@ public struct Route: Codable, Identifiable, Hashable, Sendable {
     public let bounds: RouteBounds
     public let schemaVersion: Int
     public let sourceFingerprint: String?
+    public var targetPaceSecondsPerKilometer: Double?
 
     public var pointCount: Int { segments.reduce(0) { $0 + $1.points.count } }
 
     public init(
         id: UUID = UUID(), name: String, originalFilename: String, importDate: Date = .now,
-        segments: [RouteSegment], sourceFingerprint: String? = nil, schemaVersion: Int = Self.currentSchemaVersion
+        segments: [RouteSegment], sourceFingerprint: String? = nil,
+        targetPaceSecondsPerKilometer: Double? = nil,
+        schemaVersion: Int = Self.currentSchemaVersion
     ) throws {
         let usable = segments.filter { !$0.points.isEmpty }
-        guard let first = usable.first?.points.first, let last = usable.last?.points.last else {
+        guard usable.contains(where: { $0.points.count >= 2 }),
+              let first = usable.first?.points.first, let last = usable.last?.points.last else {
             throw RouteValidationError.noUsablePoints
+        }
+        for point in usable.flatMap(\.points) {
+            guard point.latitude.isFinite, (-90...90).contains(point.latitude) else {
+                throw RouteValidationError.invalidLatitude(point.latitude)
+            }
+            guard point.longitude.isFinite, (-180...180).contains(point.longitude) else {
+                throw RouteValidationError.invalidLongitude(point.longitude)
+            }
+        }
+        if let targetPaceSecondsPerKilometer,
+           !PaceGoalConfiguration.isValid(targetPaceSecondsPerKilometer) {
+            throw RouteValidationError.invalidTargetPace(targetPaceSecondsPerKilometer)
         }
         self.id = id
         self.name = name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Untitled Route" : name
@@ -76,6 +103,7 @@ public struct Route: Codable, Identifiable, Hashable, Sendable {
         self.bounds = RouteBounds(points: usable.flatMap(\.points))
         self.schemaVersion = schemaVersion
         self.sourceFingerprint = sourceFingerprint
+        self.targetPaceSecondsPerKilometer = targetPaceSecondsPerKilometer
     }
 }
 
@@ -84,6 +112,7 @@ public enum RouteValidationError: Error, LocalizedError, Equatable, Sendable {
     case invalidLongitude(Double)
     case noUsablePoints
     case unsupportedSchema(Int)
+    case invalidTargetPace(Double)
 
     public var errorDescription: String? {
         switch self {
@@ -91,6 +120,7 @@ public enum RouteValidationError: Error, LocalizedError, Equatable, Sendable {
         case .invalidLongitude(let value): "Longitude \(value) is outside −180…180."
         case .noUsablePoints: "The file contains no usable route points."
         case .unsupportedSchema(let version): "Route schema version \(version) is not supported."
+        case .invalidTargetPace(let value): "Target pace \(value) seconds per kilometre is outside the supported range."
         }
     }
 }

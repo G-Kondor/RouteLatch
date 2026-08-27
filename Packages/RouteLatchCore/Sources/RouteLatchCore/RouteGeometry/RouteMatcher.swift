@@ -25,6 +25,7 @@ public struct RouteMatcher: Sendable {
     public var localSearchRadius = 80
     public var maximumHorizontalAccuracy = 75.0
     private var lastEdge: Int?
+    private var lastDistanceAlong: Double?
     private let edges: [Edge]
     private let totalDistance: Double
 
@@ -56,6 +57,7 @@ public struct RouteMatcher: Sendable {
         lastEdge = best.index
         let edge = edges[best.index]
         let along = min(totalDistance, edge.baseDistance + best.fraction * edge.length)
+        lastDistanceAlong = along
         return RouteMatch(
             distanceFromRoute: best.distance, distanceAlongRoute: along,
             progress: totalDistance > 0 ? along / totalDistance : 0,
@@ -67,21 +69,52 @@ public struct RouteMatcher: Sendable {
     private func bestProjection(latitude: Double, longitude: Double, indices: Range<Int>) -> Projection {
         indices.reduce(Projection(index: indices.lowerBound, distance: .greatestFiniteMagnitude, fraction: 0, latitude: latitude, longitude: longitude)) { best, index in
             let candidate = project(latitude: latitude, longitude: longitude, edge: edges[index], index: index)
+            guard abs(candidate.distance - best.distance) <= 2, let lastEdge else {
+                return candidate.distance < best.distance ? candidate : best
+            }
+            if let lastDistanceAlong {
+                let candidateAlong = edges[candidate.index].baseDistance + candidate.fraction * edges[candidate.index].length
+                let bestAlong = edges[best.index].baseDistance + best.fraction * edges[best.index].length
+                let candidateMovesForward = candidateAlong >= lastDistanceAlong - 3
+                let bestMovesForward = bestAlong >= lastDistanceAlong - 3
+                if candidateMovesForward != bestMovesForward { return candidateMovesForward ? candidate : best }
+            }
+            let candidateDelta = abs(candidate.index - lastEdge)
+            let bestDelta = abs(best.index - lastEdge)
+            if candidateDelta != bestDelta { return candidateDelta < bestDelta ? candidate : best }
+            if candidate.index >= lastEdge, best.index < lastEdge { return candidate }
             return candidate.distance < best.distance ? candidate : best
         }
     }
 
     private func project(latitude: Double, longitude: Double, edge: Edge, index: Int) -> Projection {
         let referenceLatitude = (latitude + edge.start.latitude + edge.end.latitude) / 3 * .pi / 180
-        let scaleX = 111_320.0 * cos(referenceLatitude), scaleY = 110_574.0
-        let ax = edge.start.longitude * scaleX, ay = edge.start.latitude * scaleY
-        let bx = edge.end.longitude * scaleX, by = edge.end.latitude * scaleY
-        let px = longitude * scaleX, py = latitude * scaleY
+        let scaleX = 111_320.0 * max(0.000_001, abs(cos(referenceLatitude))), scaleY = 110_574.0
+        let ax = 0.0, ay = edge.start.latitude * scaleY
+        let bx = longitudeDelta(from: edge.start.longitude, to: edge.end.longitude) * scaleX
+        let by = edge.end.latitude * scaleY
+        let px = longitudeDelta(from: edge.start.longitude, to: longitude) * scaleX
+        let py = latitude * scaleY
         let dx = bx - ax, dy = by - ay
         let denominator = dx * dx + dy * dy
         let fraction = denominator > 0 ? max(0, min(1, ((px - ax) * dx + (py - ay) * dy) / denominator)) : 0
         let x = ax + fraction * dx, y = ay + fraction * dy
-        return Projection(index: index, distance: hypot(px - x, py - y), fraction: fraction, latitude: y / scaleY, longitude: x / scaleX)
+        let projectedLongitude = wrappedLongitude(edge.start.longitude + x / scaleX)
+        return Projection(index: index, distance: hypot(px - x, py - y), fraction: fraction, latitude: y / scaleY, longitude: projectedLongitude)
+    }
+
+    private func longitudeDelta(from start: Double, to end: Double) -> Double {
+        var delta = end - start
+        if delta > 180 { delta -= 360 }
+        if delta < -180 { delta += 360 }
+        return delta
+    }
+
+    private func wrappedLongitude(_ longitude: Double) -> Double {
+        var result = longitude
+        if result > 180 { result -= 360 }
+        if result < -180 { result += 360 }
+        return result
     }
 }
 

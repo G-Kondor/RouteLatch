@@ -6,12 +6,18 @@ struct RouteDetailView: View {
     let route: Route
     @ObservedObject var model: PhoneRouteLibraryModel
     @State private var position: MapCameraPosition
+    @State private var paceAlertsEnabled: Bool
+    @State private var targetPace: Double
 
     init(route: Route, model: PhoneRouteLibraryModel) {
         self.route = route
         self.model = model
         _position = State(initialValue: .region(route.mapRegion))
+        _paceAlertsEnabled = State(initialValue: route.targetPaceSecondsPerKilometer != nil)
+        _targetPace = State(initialValue: route.targetPaceSecondsPerKilometer ?? PaceGoalConfiguration.defaultSecondsPerKilometer)
     }
+
+    private var currentRoute: Route { model.routes.first(where: { $0.id == route.id }) ?? route }
 
     var body: some View {
         ScrollView {
@@ -30,16 +36,77 @@ struct RouteDetailView: View {
                     metric("Points", route.pointCount.formatted(), "mappin.and.ellipse")
                     metric("Segments", route.segments.count.formatted(), "point.3.connected.trianglepath.dotted")
                 }
+                paceGoalCard
                 VStack(alignment: .leading, spacing: 8) {
                     LabeledContent("Original file", value: route.originalFilename)
                     LabeledContent("Imported") { Text(route.importDate, style: .date) }
-                    LabeledContent("Watch") { Text(model.connectivity.status(for: route).label) }
+                    LabeledContent("Watch") { Text(model.connectivity.status(for: currentRoute).label) }
                 }.font(.subheadline)
-                Button { model.connectivity.send(route) } label: { Label("Send to Apple Watch", systemImage: "applewatch.radiowaves.left.and.right").frame(maxWidth: .infinity) }
+                Button {
+                    savePaceGoal()
+                    model.connectivity.send(currentRoute)
+                } label: { Label("Send to Apple Watch", systemImage: "applewatch.radiowaves.left.and.right").frame(maxWidth: .infinity) }
                     .buttonStyle(.borderedProminent).controlSize(.large)
             }.padding()
         }
         .navigationTitle(route.name).navigationBarTitleDisplayMode(.inline)
+    }
+
+
+    private var paceGoalCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Toggle(isOn: $paceAlertsEnabled) {
+                Label("Target pace alerts", systemImage: "speedometer")
+                    .font(.headline)
+            }
+            .onChange(of: paceAlertsEnabled) { _, _ in savePaceGoal() }
+
+            HStack(alignment: .firstTextBaseline) {
+                Text("Goal")
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text(formatPace(targetPace))
+                    .font(.title2.bold().monospacedDigit())
+                    .foregroundStyle(paceAlertsEnabled ? .primary : .secondary)
+            }
+            Slider(
+                value: $targetPace,
+                in: PaceGoalConfiguration.minimumSecondsPerKilometer...PaceGoalConfiguration.maximumSecondsPerKilometer,
+                step: PaceGoalConfiguration.sliderStep,
+                label: { Text("Target pace") },
+                minimumValueLabel: { Text("3:00").font(.caption2) },
+                maximumValueLabel: { Text("15:00").font(.caption2) },
+                onEditingChanged: { editing in if !editing { savePaceGoal() } }
+            )
+            .disabled(!paceAlertsEnabled)
+            .accessibilityValue(formatPace(targetPace))
+
+            LabeledContent("Planned time") {
+                Text(formatDuration(currentRoute.totalDistance / 1_000 * targetPace))
+                    .monospacedDigit()
+            }
+            .foregroundStyle(paceAlertsEnabled ? .primary : .secondary)
+            Text("After 500 m and 3 active minutes, the Watch warns when your average course pace is more than 10% behind this goal.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding()
+        .background(.quaternary, in: RoundedRectangle(cornerRadius: 14))
+    }
+
+    private func savePaceGoal() {
+        model.setTargetPace(paceAlertsEnabled ? targetPace : nil, for: currentRoute)
+    }
+
+    private func formatPace(_ seconds: Double) -> String {
+        let rounded = Int(seconds.rounded())
+        return String(format: "%d:%02d /km", rounded / 60, rounded % 60)
+    }
+
+    private func formatDuration(_ seconds: Double) -> String {
+        let rounded = Int(seconds.rounded())
+        if rounded >= 3_600 { return String(format: "%d:%02d:%02d", rounded / 3_600, rounded % 3_600 / 60, rounded % 60) }
+        return String(format: "%d:%02d", rounded / 60, rounded % 60)
     }
 
     private func metric(_ title: String, _ value: String, _ symbol: String) -> some View {
