@@ -26,11 +26,14 @@ enum RouteTransferStatus: Equatable {
 @MainActor
 final class PhoneConnectivityManager: NSObject, ObservableObject {
     @Published private(set) var statuses: [UUID: RouteTransferStatus] = [:]
+    var onCompletedRunReceived: ((RecordedRun) -> Void)?
     private let session: WCSession? = WCSession.isSupported() ? .default : nil
+    private let runStore: RecordedRunFileStore
     private var pendingRoutes: [UUID: Route] = [:]
     private var preparingRouteIDs: Set<UUID> = []
 
-    override init() {
+    init(runStore: RecordedRunFileStore) {
+        self.runStore = runStore
         super.init()
         session?.delegate = self
         session?.activate()
@@ -134,6 +137,18 @@ extension PhoneConnectivityManager: WCSessionDelegate {
         let receiptError = userInfo["routeReceiptError"] as? String
         Task { @MainActor in
             statuses[routeID] = receiptError.map(RouteTransferStatus.failed) ?? .delivered
+        }
+    }
+
+    nonisolated func session(_ session: WCSession, didReceive file: WCSessionFile) {
+        guard file.metadata?["transferKind"] as? String == "completedRun" else { return }
+        do {
+            let run = try RecordedRunCodec.decode(Data(contentsOf: file.fileURL))
+            try runStore.save(run)
+            session.transferUserInfo(["completedRunReceiptID": run.id.uuidString])
+            Task { @MainActor [weak self] in self?.onCompletedRunReceived?(run) }
+        } catch {
+            phoneConnectivityLogger.error("Completed run transfer failed: \(error.localizedDescription, privacy: .public)")
         }
     }
 }

@@ -32,6 +32,15 @@
 	</array>
 	<key>WKApplication</key>
 	<true/>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>routelatch</string>
+			</array>
+		</dict>
+	</array>
 	<key>WKCompanionAppBundleIdentifier</key>
 	<string>com.gergokondor.RouteLatchApp</string>
 	<key>WKWatchOnly</key>
