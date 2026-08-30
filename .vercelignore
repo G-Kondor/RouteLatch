@@ -1,0 +1,7 @@
+*
+!api/
+!api/**
+!Backend/
+!Backend/api/
+!Backend/api/**
+!vercel.json

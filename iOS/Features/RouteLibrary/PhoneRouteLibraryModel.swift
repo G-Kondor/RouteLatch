@@ -9,21 +9,30 @@ private let phoneLibraryLogger = Logger(subsystem: Bundle.main.bundleIdentifier 
 final class PhoneRouteLibraryModel: ObservableObject {
     private static let bundledRouteSeedKey = "BundledRoute.Spartacus2025XL.v1.seeded"
     @Published private(set) var routes: [Route] = []
+    @Published private(set) var completedRuns: [RecordedRun] = []
     @Published private(set) var isImporting = false
     @Published var errorMessage: String?
     @Published var storageWarning: String?
-    let connectivity = PhoneConnectivityManager()
+    let connectivity: PhoneConnectivityManager
+    let strava: StravaManager
+    let runStore: RecordedRunFileStore
     private var connectivityCancellable: AnyCancellable?
     private let importer = GPXImportService()
-    private lazy var store: RouteFileStore = {
-        let base = (try? GPXImportService.applicationSupportDirectory()) ?? FileManager.default.temporaryDirectory
-        return RouteFileStore(directory: base.appendingPathComponent("Routes", isDirectory: true))
-    }()
+    private let store: RouteFileStore
 
     init() {
+        let base = (try? GPXImportService.applicationSupportDirectory()) ?? FileManager.default.temporaryDirectory
+        store = RouteFileStore(directory: base.appendingPathComponent("Routes", isDirectory: true))
+        runStore = RecordedRunFileStore(directory: base.appendingPathComponent("CompletedRuns", isDirectory: true))
+        connectivity = PhoneConnectivityManager(runStore: runStore)
+        strava = StravaManager(runStore: runStore)
         connectivityCancellable = connectivity.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
+        connectivity.onCompletedRunReceived = { [weak self] _ in
+            self?.reloadCompletedRuns()
+        }
         seedBundledRouteIfNeeded()
         reload()
+        reloadCompletedRuns()
     }
 
     private func seedBundledRouteIfNeeded() {
@@ -46,6 +55,29 @@ final class PhoneRouteLibraryModel: ObservableObject {
         let result = store.loadAll()
         routes = result.routes
         storageWarning = result.issues.isEmpty ? nil : "Skipped \(result.issues.count) damaged route file(s)."
+    }
+
+    func handleIncomingURL(_ url: URL) {
+        if !strava.handleIncomingURL(url) { importRoute(from: url) }
+    }
+
+    func reloadCompletedRuns() {
+        let result = runStore.loadAll()
+        completedRuns = result.runs
+        if !result.issues.isEmpty {
+            storageWarning = "Skipped \(result.issues.count) damaged completed run file(s)."
+        }
+        strava.updateLocalStatuses(for: completedRuns)
+    }
+
+    func delete(_ run: RecordedRun) {
+        do {
+            try runStore.delete(run)
+            reloadCompletedRuns()
+        } catch {
+            phoneLibraryLogger.error("Completed run deletion failed: \(error.localizedDescription, privacy: .public)")
+            errorMessage = error.localizedDescription
+        }
     }
 
     func importRoute(from url: URL) {

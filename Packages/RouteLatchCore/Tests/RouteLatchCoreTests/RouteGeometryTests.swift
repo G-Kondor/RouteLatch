@@ -102,7 +102,7 @@ final class RouteGeometryTests: XCTestCase {
         XCTAssertEqual(alert.update(distance: 24, at: start.addingTimeInterval(22)), .returnedToRoute)
     }
 
-    func testPaceProgressUsesCourseDistance() throws {
+    func testPaceProgressUsesActualDistance() throws {
         let progress = try XCTUnwrap(PaceCalculator.progress(
             targetPaceSecondsPerKilometer: 300,
             elapsed: 1_650,
@@ -113,6 +113,25 @@ final class RouteGeometryTests: XCTestCase {
         XCTAssertEqual(progress.plannedElapsed, 1_500, accuracy: 0.001)
         XCTAssertEqual(progress.scheduleDelta, 150, accuracy: 0.001)
         XCTAssertEqual(progress.projectedDuration, 3_300, accuracy: 0.001)
+    }
+
+    func testUnvisitedPlannedDistanceCannotImproveAveragePace() throws {
+        let shortPlan = try XCTUnwrap(PaceCalculator.progress(
+            targetPaceSecondsPerKilometer: 300,
+            elapsed: 1_650,
+            distanceCompleted: 5_000,
+            plannedDistance: 6_000
+        ))
+        let longPlan = try XCTUnwrap(PaceCalculator.progress(
+            targetPaceSecondsPerKilometer: 300,
+            elapsed: 1_650,
+            distanceCompleted: 5_000,
+            plannedDistance: 20_000
+        ))
+
+        XCTAssertEqual(shortPlan.averagePaceSecondsPerKilometer, 330, accuracy: 0.001)
+        XCTAssertEqual(longPlan.averagePaceSecondsPerKilometer, shortPlan.averagePaceSecondsPerKilometer, accuracy: 0.001)
+        XCTAssertEqual(longPlan.scheduleDelta, shortPlan.scheduleDelta, accuracy: 0.001)
     }
 
     func testPaceAlertWaitsForReliableWarmup() {
@@ -129,5 +148,38 @@ final class RouteGeometryTests: XCTestCase {
         XCTAssertEqual(alert.update(averagePace: 318, targetPace: 300, distanceCompleted: 900, elapsed: 320), .repeatWarning)
         XCTAssertEqual(alert.update(averagePace: 315, targetPace: 300, distanceCompleted: 1_000, elapsed: 330), .caughtUp)
         XCTAssertFalse(alert.isBehind)
+    }
+
+    func testRunDistanceUsesOnlyActuallyVisitedSamples() {
+        var tracker = RunDistanceAccumulator()
+        let start = Date(timeIntervalSince1970: 1_000)
+        tracker.add(.init(latitude: 47, longitude: 19, horizontalAccuracy: 5, timestamp: start))
+        tracker.add(.init(latitude: 47, longitude: 19.001, horizontalAccuracy: 5, timestamp: start.addingTimeInterval(60)))
+
+        XCTAssertEqual(tracker.distance, 75.8, accuracy: 2)
+        let average = 300 / (tracker.distance / 1_000)
+        XCTAssertGreaterThan(average, 3_900)
+    }
+
+    func testRunDistanceRejectsGPSJumpAndOutOfOrderSamples() {
+        var tracker = RunDistanceAccumulator()
+        let start = Date(timeIntervalSince1970: 2_000)
+        tracker.add(.init(latitude: 47, longitude: 19, horizontalAccuracy: 5, timestamp: start))
+        tracker.add(.init(latitude: 48, longitude: 20, horizontalAccuracy: 5, timestamp: start.addingTimeInterval(1)))
+        tracker.add(.init(latitude: 47, longitude: 19.0001, horizontalAccuracy: 5, timestamp: start.addingTimeInterval(-1)))
+
+        XCTAssertEqual(tracker.distance, 0)
+    }
+
+    func testRunDistanceResetClearsPreviousSample() {
+        var tracker = RunDistanceAccumulator()
+        let start = Date(timeIntervalSince1970: 3_000)
+        tracker.add(.init(latitude: 47, longitude: 19, horizontalAccuracy: 5, timestamp: start))
+        tracker.add(.init(latitude: 47, longitude: 19.001, horizontalAccuracy: 5, timestamp: start.addingTimeInterval(60)))
+        tracker.reset()
+
+        XCTAssertEqual(tracker.distance, 0)
+        tracker.add(.init(latitude: 48, longitude: 20, horizontalAccuracy: 5, timestamp: start.addingTimeInterval(61)))
+        XCTAssertEqual(tracker.distance, 0)
     }
 }

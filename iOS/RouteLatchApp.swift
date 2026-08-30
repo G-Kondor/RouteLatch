@@ -8,7 +8,7 @@ struct RouteLatchApp: App {
         WindowGroup {
             RouteLibraryView(model: model)
                 .tint(.orange)
-                .onOpenURL { model.importRoute(from: $0) }
+                .onOpenURL { model.handleIncomingURL($0) }
         }
     }
 }

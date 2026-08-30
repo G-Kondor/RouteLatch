@@ -5,32 +5,123 @@ struct WatchRouteLibraryView: View {
     @ObservedObject var model: WatchRouteLibraryModel
     var body: some View {
         NavigationStack {
-            Group {
-                if model.routes.isEmpty {
-                    ContentUnavailableView("No Routes", systemImage: "point.topleft.down.to.point.bottomright.curvepath", description: Text("Send a GPX route from RouteLatch on iPhone."))
-                } else {
-                    List(model.routes) { route in
-                        NavigationLink {
-                            WatchRouteDetailView(
-                                route: route,
-                                onDelete: { model.delete(route) },
-                                onPaceChange: { model.setTargetPace($0, for: route) }
-                            )
-                        } label: {
-                            VStack(alignment: .leading) {
-                                Text(route.name).font(.headline).lineLimit(2)
-                                Label(watchDistance(route.totalDistance), systemImage: "checkmark.circle.fill").font(.caption).foregroundStyle(.secondary)
-                                if let target = route.targetPaceSecondsPerKilometer {
+            List {
+                Section {
+                    NavigationLink {
+                        FreeRunSetupView(
+                            targetPaceSecondsPerKilometer: model.freeRunTargetPaceSecondsPerKilometer,
+                            onPaceChange: model.setFreeRunTargetPace
+                        )
+                    } label: {
+                        Label {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Free Run").font(.headline)
+                                Text("Run without a route").font(.caption2).foregroundStyle(.secondary)
+                                if let target = model.freeRunTargetPaceSecondsPerKilometer {
                                     Label(watchPace(target), systemImage: "speedometer")
                                         .font(.caption2).foregroundStyle(.orange)
+                                }
+                            }
+                        } icon: {
+                            Image(systemName: "figure.run.circle.fill").foregroundStyle(.green)
+                        }
+                    }
+                }
+
+                if model.isLoadingRoutes {
+                    Section("Guided Routes") {
+                        HStack(spacing: 8) {
+                            ProgressView()
+                            Text("Loading routes…")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                } else if model.routes.isEmpty {
+                    Section("Guided Routes") {
+                        Text("Send a GPX route from RouteLatch on iPhone.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                } else {
+                    Section("Guided Routes") {
+                        ForEach(model.routes) { route in
+                            NavigationLink {
+                                WatchRouteDetailView(
+                                    route: route,
+                                    onDelete: { model.delete(route) },
+                                    onPaceChange: { model.setTargetPace($0, for: route) }
+                                )
+                            } label: {
+                                VStack(alignment: .leading) {
+                                    Text(route.name).font(.headline).lineLimit(2)
+                                    Label(watchDistance(route.totalDistance), systemImage: "checkmark.circle.fill").font(.caption).foregroundStyle(.secondary)
+                                    if let target = route.targetPaceSecondsPerKilometer {
+                                        Label(watchPace(target), systemImage: "speedometer")
+                                            .font(.caption2).foregroundStyle(.orange)
+                                    }
                                 }
                             }
                         }
                     }
                 }
-            }.navigationTitle("Routes")
+            }
+            .navigationTitle("Run")
         }
         .alert("Route Error", isPresented: Binding(get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })) { Button("OK") {} } message: { Text(model.errorMessage ?? "Unknown error") }
+    }
+}
+
+struct FreeRunSetupView: View {
+    let onPaceChange: (Double?) -> Void
+    @State private var showNavigation = false
+    @State private var paceAlertsEnabled: Bool
+    @State private var targetPace: Double
+
+    init(targetPaceSecondsPerKilometer: Double?, onPaceChange: @escaping (Double?) -> Void) {
+        self.onPaceChange = onPaceChange
+        _paceAlertsEnabled = State(initialValue: targetPaceSecondsPerKilometer != nil)
+        _targetPace = State(initialValue: targetPaceSecondsPerKilometer ?? PaceGoalConfiguration.defaultSecondsPerKilometer)
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 12) {
+                Image(systemName: "figure.run.circle.fill")
+                    .font(.system(size: 44)).foregroundStyle(.green)
+                Text("Free Run").font(.headline)
+                Text("Run without a route").font(.caption).foregroundStyle(.secondary)
+                Divider()
+                Toggle("Pace alerts", isOn: $paceAlertsEnabled)
+                    .onChange(of: paceAlertsEnabled) { _, _ in savePaceGoal() }
+                Text(watchPace(targetPace))
+                    .font(.title3.bold().monospacedDigit())
+                    .foregroundStyle(paceAlertsEnabled ? .primary : .secondary)
+                Slider(
+                    value: $targetPace,
+                    in: PaceGoalConfiguration.minimumSecondsPerKilometer...PaceGoalConfiguration.maximumSecondsPerKilometer,
+                    step: PaceGoalConfiguration.sliderStep,
+                    onEditingChanged: { editing in if !editing { savePaceGoal() } }
+                )
+                .disabled(!paceAlertsEnabled)
+                .accessibilityLabel("Target pace")
+                .accessibilityValue(watchPace(targetPace))
+                if paceAlertsEnabled {
+                    Text("Alerts when average pace falls behind \(watchPace(targetPace)).")
+                        .font(.caption2).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                }
+                Button("Start Free Run", systemImage: "figure.run") { showNavigation = true }
+                    .buttonStyle(.borderedProminent)
+            }
+        }
+        .navigationDestination(isPresented: $showNavigation) {
+            NavigationView(
+                freeRunTargetPaceSecondsPerKilometer: paceAlertsEnabled ? targetPace : nil
+            )
+        }
+    }
+
+    private func savePaceGoal() {
+        onPaceChange(paceAlertsEnabled ? targetPace : nil)
     }
 }
 

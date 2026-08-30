@@ -5,40 +5,73 @@ import RouteLatchCore
 @MainActor
 final class WatchRouteLibraryModel: ObservableObject {
     private static let bundledRouteSeedKey = "BundledRoute.Spartacus2025XL.v1.seeded"
+    private static let freeRunTargetPaceKey = "FreeRun.TargetPaceSecondsPerKilometer"
     @Published private(set) var routes: [Route] = []
+    @Published private(set) var isLoadingRoutes = true
+    @Published private(set) var freeRunTargetPaceSecondsPerKilometer: Double?
     @Published var errorMessage: String?
     let store: RouteFileStore
+    let runStore: RecordedRunFileStore
     private var connectivity: WatchConnectivityManager!
 
     init() {
         let support = (try? FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)) ?? FileManager.default.temporaryDirectory
         store = RouteFileStore(directory: support.appendingPathComponent("RouteLatch/Routes", isDirectory: true))
-        seedBundledRouteIfNeeded()
-        connectivity = WatchConnectivityManager(store: store)
+        runStore = RecordedRunFileStore(directory: support.appendingPathComponent("RouteLatch/PendingRuns", isDirectory: true))
+        let storedPace = (UserDefaults.standard.object(forKey: Self.freeRunTargetPaceKey) as? NSNumber)?.doubleValue
+        freeRunTargetPaceSecondsPerKilometer = storedPace.flatMap { PaceGoalConfiguration.isValid($0) ? $0 : nil }
+        connectivity = WatchConnectivityManager(store: store, runStore: runStore)
         connectivity.onRouteReceived = { [weak self] in self?.reload() }
         connectivity.onTransferError = { [weak self] message in self?.errorMessage = "A route could not be received: \(message)" }
-        reload()
+        Task { [weak self] in
+            await self?.loadInitialRoutes()
+        }
     }
 
-    private func seedBundledRouteIfNeeded() {
+    private func loadInitialRoutes() async {
+        await seedBundledRouteIfNeeded()
+        await loadRoutesFromDisk()
+    }
+
+    private func seedBundledRouteIfNeeded() async {
         let defaults = UserDefaults.standard
         guard !defaults.bool(forKey: Self.bundledRouteSeedKey),
               let url = Bundle.main.url(forResource: "DefaultRoute", withExtension: "gpx") else { return }
-        do {
-            var route = try GPXParser().parse(url: url)
-            route.name = "Spartacus 2025 – Terep XL"
-            try store.save(route)
+        let store = store
+        let result = await Task.detached(priority: .utility) {
+            do {
+                var route = try GPXParser().parse(url: url)
+                route.name = "Spartacus 2025 – Terep XL"
+                try store.save(route)
+                return SeedResult.seeded
+            } catch RouteStoreError.duplicateRoute {
+                return SeedResult.alreadyPresent
+            } catch {
+                return SeedResult.failed(error.localizedDescription)
+            }
+        }.value
+
+        switch result {
+        case .seeded, .alreadyPresent:
             defaults.set(true, forKey: Self.bundledRouteSeedKey)
-        } catch RouteStoreError.duplicateRoute {
-            defaults.set(true, forKey: Self.bundledRouteSeedKey)
-        } catch {
-            errorMessage = "The bundled test route could not be installed: \(error.localizedDescription)"
+        case let .failed(message):
+            errorMessage = "The bundled test route could not be installed: \(message)"
         }
     }
 
     func reload() {
-        let result = store.loadAll()
+        Task { [weak self] in
+            await self?.loadRoutesFromDisk()
+        }
+    }
+
+    private func loadRoutesFromDisk() async {
+        let store = store
+        let result = await Task.detached(priority: .userInitiated) {
+            store.loadAll()
+        }.value
         routes = result.routes
+        isLoadingRoutes = false
         if !result.issues.isEmpty {
             errorMessage = "Skipped \(result.issues.count) damaged route file(s)."
         }
@@ -59,4 +92,20 @@ final class WatchRouteLibraryModel: ObservableObject {
             errorMessage = "The target pace could not be saved: \(error.localizedDescription)"
         }
     }
+
+    func setFreeRunTargetPace(_ secondsPerKilometer: Double?) {
+        guard secondsPerKilometer.map(PaceGoalConfiguration.isValid) ?? true else { return }
+        freeRunTargetPaceSecondsPerKilometer = secondsPerKilometer
+        if let secondsPerKilometer {
+            UserDefaults.standard.set(secondsPerKilometer, forKey: Self.freeRunTargetPaceKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: Self.freeRunTargetPaceKey)
+        }
+    }
+}
+
+private enum SeedResult: Sendable {
+    case seeded
+    case alreadyPresent
+    case failed(String)
 }
