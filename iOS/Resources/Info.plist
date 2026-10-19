@@ -89,5 +89,9 @@
 	</array>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>NSHealthShareUsageDescription</key>
+	<string>RouteLatch reads your running workouts from Apple Health to show distance, pace, heart-rate zones, effort, elevation, cadence, and splits.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>RouteLatch saves the runs you start on Apple Watch. Analytics on iPhone only reads workouts that are already in Apple Health.</string>
 </dict>
 </plist>

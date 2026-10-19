@@ -16,6 +16,8 @@
 		A1000000000000000000000C /* RouteLatchTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000000C /* RouteLatchTheme.swift */; };
 		A1000000000000000000000D /* PhoneShellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000000D /* PhoneShellView.swift */; };
 		A1000000000000000000000E /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000000E /* DashboardView.swift */; };
+		A10000000000000000000010 /* RunningHealthStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000010 /* RunningHealthStore.swift */; };
+		A10000000000000000000011 /* AnalyticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000011 /* AnalyticsView.swift */; };
 		A10000000000000000000007 /* RouteLatchCore in Frameworks */ = {isa = PBXBuildFile; productRef = F10000000000000000000002 /* RouteLatchCore */; };
 		A10000000000000000000008 /* StravaManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000008 /* StravaManager.swift */; };
 		A10000000000000000000009 /* StravaViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000009 /* StravaViews.swift */; };
@@ -109,6 +111,9 @@
 		B1000000000000000000000C /* RouteLatchTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteLatchTheme.swift; sourceTree = "<group>"; };
 		B1000000000000000000000D /* PhoneShellView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneShellView.swift; sourceTree = "<group>"; };
 		B1000000000000000000000E /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
+		B10000000000000000000010 /* RunningHealthStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunningHealthStore.swift; sourceTree = "<group>"; };
+		B10000000000000000000011 /* AnalyticsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalyticsView.swift; sourceTree = "<group>"; };
+		B10000000000000000000012 /* RouteLatch.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = RouteLatch.entitlements; sourceTree = "<group>"; };
 		B10000000000000000000002 /* GPXImportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPXImportService.swift; sourceTree = "<group>"; };
 		B10000000000000000000003 /* PhoneConnectivityManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneConnectivityManager.swift; sourceTree = "<group>"; };
 		B10000000000000000000004 /* PhoneRouteLibraryModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneRouteLibraryModel.swift; sourceTree = "<group>"; };
@@ -182,6 +187,8 @@
 				B10000000000000000000001 /* RouteLatchApp.swift */,
 				E17000000000000000000001 /* Theme */,
 				E18000000000000000000001 /* Home */,
+				E19000000000000000000001 /* Health */,
+				E19100000000000000000001 /* Analytics */,
 				E16000000000000000000001 /* Strava Integration */,
 				E11000000000000000000001 /* Route Library */,
 				E12000000000000000000001 /* Route Import */,
@@ -225,6 +232,7 @@
 			children = (
 				B40000000000000000000002 /* Assets.xcassets */,
 				B10000000000000000000007 /* Info.plist */,
+				B10000000000000000000012 /* RouteLatch.entitlements */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -235,6 +243,23 @@
 				B10000000000000000000003 /* PhoneConnectivityManager.swift */,
 			);
 			path = Connectivity;
+			sourceTree = "<group>";
+		};
+		E19000000000000000000001 /* Health */ = {
+			isa = PBXGroup;
+			children = (
+				B10000000000000000000010 /* RunningHealthStore.swift */,
+			);
+			path = Health;
+			sourceTree = "<group>";
+		};
+		E19100000000000000000001 /* Analytics */ = {
+			isa = PBXGroup;
+			children = (
+				B10000000000000000000011 /* AnalyticsView.swift */,
+			);
+			name = Analytics;
+			path = Features/Analytics;
 			sourceTree = "<group>";
 		};
 		E18000000000000000000001 /* Home */ = {
@@ -509,6 +534,8 @@
 				A1000000000000000000000C /* RouteLatchTheme.swift in Sources */,
 				A1000000000000000000000D /* PhoneShellView.swift in Sources */,
 				A1000000000000000000000E /* DashboardView.swift in Sources */,
+				A10000000000000000000010 /* RunningHealthStore.swift in Sources */,
+				A10000000000000000000011 /* AnalyticsView.swift in Sources */,
 				A10000000000000000000008 /* StravaManager.swift in Sources */,
 				A10000000000000000000009 /* StravaViews.swift in Sources */,
 				A10000000000000000000002 /* GPXImportService.swift in Sources */,
@@ -594,6 +621,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = iOS/Resources/RouteLatch.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 595EKYS652;
@@ -624,6 +652,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = iOS/Resources/RouteLatch.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 595EKYS652;
