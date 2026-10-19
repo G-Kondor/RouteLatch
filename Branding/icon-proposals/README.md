@@ -12,3 +12,4 @@ Square 1024×1024 artwork. iOS applies the corner radius, so these stay full-ble
 8. A cream R nested in an L on orange, the two letters sharing one spine.
 9. A cream RL ligature on orange, joined by a bar at the waist.
 10. A cream monoline RL on orange, the R’s leg bending into the L.
+11. The chosen waist-tied RL, refined to one even stroke.
