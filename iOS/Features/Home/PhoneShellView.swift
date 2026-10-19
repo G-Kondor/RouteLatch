@@ -6,6 +6,7 @@ enum PhoneTab: String, CaseIterable, Identifiable {
     case home
     case routes
     case runs
+    case analytics
     case settings
 
     var id: String { rawValue }
@@ -15,6 +16,7 @@ enum PhoneTab: String, CaseIterable, Identifiable {
         case .home: "Home"
         case .routes: "Routes"
         case .runs: "Runs"
+        case .analytics: "Analytics"
         case .settings: "Settings"
         }
     }
@@ -24,6 +26,7 @@ enum PhoneTab: String, CaseIterable, Identifiable {
         case .home: "house.fill"
         case .routes: "map.fill"
         case .runs: "figure.run"
+        case .analytics: "chart.bar.fill"
         case .settings: "gearshape.fill"
         }
     }
@@ -31,6 +34,7 @@ enum PhoneTab: String, CaseIterable, Identifiable {
 
 struct PhoneShellView: View {
     @ObservedObject var model: PhoneRouteLibraryModel
+    @StateObject private var health = RunningHealthStore()
     @State private var tab = PhoneTab.home
     @State private var importing = false
 
@@ -44,6 +48,9 @@ struct PhoneShellView: View {
             }
             tabPage(.runs) {
                 CompletedRunsView(model: model, tab: $tab)
+            }
+            tabPage(.analytics) {
+                AnalyticsView(model: model, health: health, tab: $tab)
             }
             tabPage(.settings) {
                 PhoneSettingsView(model: model, tab: $tab)
@@ -95,7 +102,7 @@ struct PhoneTabBar: View {
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(selected ? LatchColor.accent : LatchColor.muted)
                             .lineLimit(1)
-                            .minimumScaleFactor(0.8)
+                            .minimumScaleFactor(0.6)
                         Circle()
                             .fill(selected ? LatchColor.accent : Color.clear)
                             .frame(width: 5, height: 5)
@@ -107,7 +114,7 @@ struct PhoneTabBar: View {
                 .accessibilityAddTraits(selected ? .isSelected : AccessibilityTraits())
             }
         }
-        .padding(.horizontal, 8)
+        .padding(.horizontal, 4)
         .padding(.vertical, 8)
         .latchCard()
         .padding(.horizontal, 16)

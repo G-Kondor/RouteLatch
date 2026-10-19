@@ -18,11 +18,13 @@ struct DashboardView: View {
                         if !otherWaiting.isEmpty {
                             waitingSection
                         }
+                        analyticsLink
                     } else {
                         emptyHero
                         if model.completedRuns.first != nil {
                             statRow
                         }
+                        analyticsLink
                     }
                 }
                 .padding(.horizontal, 16)
@@ -202,6 +204,31 @@ struct DashboardView: View {
         .padding(14)
         .frame(maxWidth: .infinity, minHeight: 118, alignment: .leading)
         .latchCard()
+    }
+
+    private var analyticsLink: some View {
+        Button { tab = .analytics } label: {
+            HStack(spacing: 12) {
+                LatchIconBadge(systemName: "chart.bar.fill", size: 44)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Analytics")
+                        .font(.headline)
+                        .foregroundStyle(LatchColor.ink)
+                    Text("Pace, zones, and effort")
+                        .font(.subheadline)
+                        .foregroundStyle(LatchColor.muted)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(LatchColor.muted)
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .latchCard()
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("Opens analytics")
     }
 
     private var waitingSection: some View {
