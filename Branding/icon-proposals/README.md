@@ -14,3 +14,4 @@ Square 1024×1024 artwork. iOS applies the corner radius, so these stay full-ble
 10. A cream monoline RL on orange, the R’s leg bending into the L.
 11. The chosen waist-tied RL, refined to one even stroke.
 12. A lighter gradient version of the waist-tied RL in 11.
+13. The installed wordmark.
