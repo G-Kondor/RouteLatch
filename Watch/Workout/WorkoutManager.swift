@@ -38,51 +38,47 @@ final class WorkoutManager: NSObject, ObservableObject {
     private var canSaveWorkoutRoute = false
     private var stopContinuation: CheckedContinuation<Void, Never>?
 
+    /// Returns false only when HealthKit is missing. `authorizationStatus(for:)`
+    /// is a false denial on watchOS, including after every Health toggle is on,
+    /// so it must not block `start()`. Route sharing is not required either.
     func requestAuthorization() async -> Bool {
-        guard HKHealthStore.isHealthDataAvailable(),
-              let heartRate = HKObjectType.quantityType(forIdentifier: .heartRate),
-              let distance = HKObjectType.quantityType(forIdentifier: .distanceWalkingRunning) else {
+        guard HKHealthStore.isHealthDataAvailable() else {
             authorizationDenied = true
             return false
         }
         let workout = HKObjectType.workoutType()
         let route = HKSeriesType.workoutRoute()
-        let shareTypes: Set<HKSampleType> = [workout, route]
-        let readTypes: Set<HKObjectType> = [heartRate, distance]
+        var readTypes = Set<HKObjectType>()
+        if let heartRate = HKObjectType.quantityType(forIdentifier: .heartRate) {
+            readTypes.insert(heartRate)
+        }
+        if let distance = HKObjectType.quantityType(forIdentifier: .distanceWalkingRunning) {
+            readTypes.insert(distance)
+        }
         do {
-            let currentWorkoutStatus = healthStore.authorizationStatus(for: workout)
-            canSaveWorkoutRoute = healthStore.authorizationStatus(for: route) == .sharingAuthorized
-
-            // `requestAuthorization` may keep the Watch app waiting for user UI
-            // even when the user has already answered every permission. Ask
-            // HealthKit first; the common repeat-run path should return here.
             let requestStatus = try await healthStore.statusForAuthorizationRequest(
-                toShare: shareTypes,
+                toShare: [workout],
                 read: readTypes
             )
-            if requestStatus == .unnecessary {
-                let authorized = currentWorkoutStatus == .sharingAuthorized
-                authorizationDenied = !authorized
-                return authorized
+            if Self.shouldRequestAuthorization(requestStatus) {
+                try await healthStore.requestAuthorization(toShare: [workout, route], read: readTypes)
             }
-
-            // A denied write permission cannot be re-prompted by repeatedly
-            // calling requestAuthorization. Let the UI direct the user to Settings.
-            if currentWorkoutStatus == .sharingDenied {
-                authorizationDenied = true
-                return false
-            }
-
-            try await healthStore.requestAuthorization(toShare: shareTypes, read: readTypes)
-            let authorized = healthStore.authorizationStatus(for: workout) == .sharingAuthorized
-            canSaveWorkoutRoute = healthStore.authorizationStatus(for: route) == .sharingAuthorized
-            authorizationDenied = !authorized
-            return authorized
         } catch {
-            authorizationDenied = true
             workoutLogger.error("Health authorization failed: \(error.localizedDescription, privacy: .public)")
-            errorMessage = error.localizedDescription
+        }
+        canSaveWorkoutRoute = true
+        authorizationDenied = false
+        return true
+    }
+
+    static func shouldRequestAuthorization(_ status: HKAuthorizationRequestStatus) -> Bool {
+        switch status {
+        case .shouldRequest, .unknown:
+            return true
+        case .unnecessary:
             return false
+        @unknown default:
+            return true
         }
     }
 
