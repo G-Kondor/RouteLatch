@@ -7,6 +7,13 @@ public struct PaceProgress: Equatable, Sendable {
     /// Positive values mean behind plan; negative values mean ahead.
     public let scheduleDelta: TimeInterval
     public let projectedDuration: TimeInterval
+
+    /// Percent of planned speed. 100 matches the target pace; lower means slower.
+    public var adherencePercent: Double {
+        guard averagePaceSecondsPerKilometer.isFinite, averagePaceSecondsPerKilometer > 0,
+              targetPaceSecondsPerKilometer.isFinite else { return 0 }
+        return targetPaceSecondsPerKilometer / averagePaceSecondsPerKilometer * 100
+    }
 }
 
 public enum PaceCalculator {
