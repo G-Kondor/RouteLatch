@@ -31,6 +31,7 @@
 		A20000000000000000000007 /* NavigationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000007 /* NavigationView.swift */; };
 		A20000000000000000000008 /* RouteLatchCore in Frameworks */ = {isa = PBXBuildFile; productRef = F10000000000000000000003 /* RouteLatchCore */; };
 		A20000000000000000000009 /* WorkoutWidgetStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000010 /* WorkoutWidgetStore.swift */; };
+		A2000000000000000000000B /* WatchLatchTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000011 /* WatchLatchTheme.swift */; };
 		A2000000000000000000000A /* RouteLatchCore in Embed Frameworks */ = {isa = PBXBuildFile; productRef = F10000000000000000000003 /* RouteLatchCore */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		A30000000000000000000001 /* RouteLatch Watch App.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = B30000000000000000000002 /* RouteLatch Watch App.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		A50000000000000000000001 /* RouteLatchWorkoutWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = B50000000000000000000001 /* RouteLatchWorkoutWidget.swift */; };
@@ -132,6 +133,7 @@
 		B20000000000000000000008 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		B20000000000000000000009 /* RouteLatchWatch.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = RouteLatchWatch.entitlements; sourceTree = "<group>"; };
 		B20000000000000000000010 /* WorkoutWidgetStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutWidgetStore.swift; sourceTree = "<group>"; };
+		B20000000000000000000011 /* WatchLatchTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchLatchTheme.swift; sourceTree = "<group>"; };
 		B30000000000000000000001 /* RouteLatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = RouteLatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B30000000000000000000002 /* RouteLatch Watch App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "RouteLatch Watch App.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		B30000000000000000000003 /* RouteLatch Workout Widget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "RouteLatch Workout Widget.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -293,6 +295,7 @@
 			isa = PBXGroup;
 			children = (
 				B20000000000000000000001 /* RouteLatchWatchApp.swift */,
+				E27000000000000000000001 /* Theme */,
 				E21000000000000000000001 /* Route Library */,
 				E22000000000000000000001 /* Navigation */,
 				E23000000000000000000001 /* Location */,
@@ -301,6 +304,14 @@
 				E26000000000000000000001 /* Resources */,
 			);
 			path = Watch;
+			sourceTree = "<group>";
+		};
+		E27000000000000000000001 /* Theme */ = {
+			isa = PBXGroup;
+			children = (
+				B20000000000000000000011 /* WatchLatchTheme.swift */,
+			);
+			path = Theme;
 			sourceTree = "<group>";
 		};
 		E21000000000000000000001 /* Route Library */ = {
@@ -551,6 +562,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A20000000000000000000001 /* RouteLatchWatchApp.swift in Sources */,
+				A2000000000000000000000B /* WatchLatchTheme.swift in Sources */,
 				A20000000000000000000002 /* WatchConnectivityManager.swift in Sources */,
 				A20000000000000000000003 /* WatchRouteLibraryModel.swift in Sources */,
 				A20000000000000000000004 /* WatchRouteLibraryView.swift in Sources */,
@@ -683,6 +695,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Watch/Resources/RouteLatchWatch.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -711,6 +724,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Watch/Resources/RouteLatchWatch.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;

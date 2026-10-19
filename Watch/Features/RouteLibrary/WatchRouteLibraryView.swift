@@ -13,40 +13,55 @@ struct WatchRouteLibraryView: View {
                             onPaceChange: model.setFreeRunTargetPace
                         )
                     } label: {
-                        Label {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("Free Run").font(.title3.bold())
-                                Text("Run without a route").font(.caption).foregroundStyle(.secondary)
+                        HStack(spacing: 8) {
+                            LatchIconBadge(systemName: "figure.run", size: 34)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("Free Run")
+                                    .font(.headline)
+                                    .foregroundStyle(LatchColor.ink)
+                                Text("Run without a route")
+                                    .font(.caption2)
+                                    .foregroundStyle(LatchColor.muted)
                                 if let target = model.freeRunTargetPaceSecondsPerKilometer {
                                     Label(watchPace(target), systemImage: "speedometer")
-                                        .font(.caption).foregroundStyle(.orange)
+                                        .font(.caption2.weight(.semibold))
+                                        .foregroundStyle(LatchColor.accent)
                                 }
                             }
-                            .padding(.vertical, 8)
-                        } icon: {
-                            Image(systemName: "figure.run.circle.fill")
-                                .font(.title2)
-                                .foregroundStyle(.green)
                         }
+                        .padding(.vertical, 4)
                     }
+                    .listRowBackground(latchListRow)
                 }
 
                 if model.isLoadingRoutes {
-                    Section("Guided Routes") {
+                    Section {
                         HStack(spacing: 8) {
                             ProgressView()
+                                .tint(LatchColor.accent)
                             Text("Loading routes…")
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(LatchColor.muted)
                         }
+                        .listRowBackground(latchListRow)
+                    } header: {
+                        sectionTitle("Guided Routes")
                     }
                 } else if model.routes.isEmpty {
-                    Section("Guided Routes") {
-                        Text("Send a GPX route from RouteLatch on iPhone.")
-                            .font(.caption).foregroundStyle(.secondary)
+                    Section {
+                        VStack(alignment: .leading, spacing: 6) {
+                            LatchIconBadge(systemName: "square.and.arrow.down", size: 32)
+                            Text("Send a GPX route from RouteLatch on iPhone.")
+                                .font(.caption2)
+                                .foregroundStyle(LatchColor.muted)
+                        }
+                        .padding(.vertical, 4)
+                        .listRowBackground(latchListRow)
+                    } header: {
+                        sectionTitle("Guided Routes")
                     }
                 } else {
-                    Section("Guided Routes") {
+                    Section {
                         ForEach(model.routes) { route in
                             NavigationLink {
                                 WatchRouteDetailView(
@@ -55,24 +70,52 @@ struct WatchRouteLibraryView: View {
                                     onPaceChange: { model.setTargetPace($0, for: route) }
                                 )
                             } label: {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(route.name).font(.title3.bold()).lineLimit(2)
-                                    Label(watchDistance(route.totalDistance), systemImage: "checkmark.circle.fill").font(.caption).foregroundStyle(.secondary)
-                                    if let target = route.targetPaceSecondsPerKilometer {
-                                        Label(watchPace(target), systemImage: "speedometer")
-                                            .font(.caption).foregroundStyle(.orange)
+                                HStack(spacing: 8) {
+                                    LatchIconBadge(systemName: "map", size: 32)
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text(route.name)
+                                            .font(.headline)
+                                            .foregroundStyle(LatchColor.ink)
+                                            .lineLimit(2)
+                                        Label(watchDistance(route.totalDistance), systemImage: "location.fill")
+                                            .font(.caption2)
+                                            .foregroundStyle(LatchColor.muted)
+                                        if let target = route.targetPaceSecondsPerKilometer {
+                                            Label(watchPace(target), systemImage: "speedometer")
+                                                .font(.caption2.weight(.semibold))
+                                                .foregroundStyle(LatchColor.accent)
+                                        }
                                     }
                                 }
-                                .padding(.vertical, 8)
+                                .padding(.vertical, 4)
                             }
+                            .listRowBackground(latchListRow)
                         }
+                    } header: {
+                        sectionTitle("Guided Routes")
                     }
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(LatchColor.canvas)
             .navigationTitle("Run")
             .environment(\.defaultMinListRowHeight, 92)
         }
+        .latchScreen()
+        .tint(LatchColor.accent)
         .alert("Route Error", isPresented: Binding(get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })) { Button("OK") {} } message: { Text(model.errorMessage ?? "Unknown error") }
+    }
+
+    private var latchListRow: some View {
+        RoundedRectangle(cornerRadius: 18, style: .continuous)
+            .fill(LatchColor.card)
+    }
+
+    private func sectionTitle(_ title: String) -> some View {
+        Text(title)
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(LatchColor.muted)
+            .textCase(nil)
     }
 }
 
@@ -94,27 +137,38 @@ struct FreeRunSetupView: View {
             VStack(spacing: 6) {
                 ScrollView {
                     VStack(spacing: 8) {
-                        Text("Free Run").font(.headline)
-                        Text("Run without a route").font(.caption2).foregroundStyle(.secondary)
+                        LatchIconBadge(systemName: "figure.run", size: 32)
+                        Text("Free Run")
+                            .font(.headline)
+                            .foregroundStyle(LatchColor.ink)
+                        Text("Run without a route")
+                            .font(.caption2)
+                            .foregroundStyle(LatchColor.muted)
                         Toggle("Pace alerts", isOn: $paceAlertsEnabled)
+                            .tint(LatchColor.accent)
                             .onChange(of: paceAlertsEnabled) { _, _ in savePaceGoal() }
                         Text(watchPace(targetPace))
                             .font(.title3.bold().monospacedDigit())
-                            .foregroundStyle(paceAlertsEnabled ? .primary : .secondary)
+                            .foregroundStyle(paceAlertsEnabled ? LatchColor.accent : LatchColor.muted)
                         Slider(
                             value: $targetPace,
                             in: PaceGoalConfiguration.minimumSecondsPerKilometer...PaceGoalConfiguration.maximumSecondsPerKilometer,
                             step: PaceGoalConfiguration.sliderStep,
                             onEditingChanged: { editing in if !editing { savePaceGoal() } }
                         )
+                        .tint(LatchColor.accent)
                         .disabled(!paceAlertsEnabled)
                         .accessibilityLabel("Target pace")
                         .accessibilityValue(watchPace(targetPace))
                         if paceAlertsEnabled {
                             Text("Alerts when average pace falls behind \(watchPace(targetPace)).")
-                                .font(.caption2).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                                .font(.caption2)
+                                .foregroundStyle(LatchColor.muted)
+                                .multilineTextAlignment(.center)
                         }
                     }
+                    .padding(8)
+                    .latchCard()
                 }
                 Button { showNavigation = true } label: {
                     VStack(spacing: 3) {
@@ -123,11 +177,13 @@ struct FreeRunSetupView: View {
                         Text("Start Free Run")
                     }
                 }
-                .buttonStyle(WatchRunButtonStyle(fill: .green, foreground: .black))
+                .buttonStyle(WatchRunButtonStyle(fill: LatchColor.accent, foreground: LatchColor.onAccent))
                 .frame(maxWidth: .infinity)
                 .frame(height: buttonHeight)
             }
         }
+        .background(LatchColor.canvas)
+        .latchScreen()
         .navigationDestination(isPresented: $showNavigation) {
             NavigationView(
                 freeRunTargetPaceSecondsPerKilometer: paceAlertsEnabled ? targetPace : nil
@@ -165,28 +221,40 @@ struct WatchRouteDetailView: View {
             VStack(spacing: 6) {
                 ScrollView {
                     VStack(spacing: 8) {
-                        Text(route.name).font(.headline).multilineTextAlignment(.center)
-                        Text(watchDistance(route.totalDistance)).font(.title3.bold())
-                        Text("\(route.pointCount) points • \(route.segments.count) segments").font(.caption2).foregroundStyle(.secondary)
+                        Text(route.name)
+                            .font(.headline)
+                            .foregroundStyle(LatchColor.ink)
+                            .multilineTextAlignment(.center)
+                        Text(watchDistance(route.totalDistance))
+                            .font(.title3.bold().monospacedDigit())
+                            .foregroundStyle(LatchColor.accent)
+                        Text("\(route.pointCount) points • \(route.segments.count) segments")
+                            .font(.caption2)
+                            .foregroundStyle(LatchColor.muted)
                         Toggle("Pace alerts", isOn: $paceAlertsEnabled)
+                            .tint(LatchColor.accent)
                             .onChange(of: paceAlertsEnabled) { _, _ in savePaceGoal() }
                         Text(watchPace(targetPace))
                             .font(.title3.bold().monospacedDigit())
-                            .foregroundStyle(paceAlertsEnabled ? .primary : .secondary)
+                            .foregroundStyle(paceAlertsEnabled ? LatchColor.accent : LatchColor.muted)
                         Slider(
                             value: $targetPace,
                             in: PaceGoalConfiguration.minimumSecondsPerKilometer...PaceGoalConfiguration.maximumSecondsPerKilometer,
                             step: PaceGoalConfiguration.sliderStep,
                             onEditingChanged: { editing in if !editing { savePaceGoal() } }
                         )
+                        .tint(LatchColor.accent)
                         .disabled(!paceAlertsEnabled)
                         .accessibilityLabel("Target pace")
                         .accessibilityValue(watchPace(targetPace))
                         if paceAlertsEnabled {
                             Text("Plan: \(watchDuration(route.totalDistance / 1_000 * targetPace))")
-                                .font(.caption2).foregroundStyle(.secondary)
+                                .font(.caption2)
+                                .foregroundStyle(LatchColor.muted)
                         }
                     }
+                    .padding(8)
+                    .latchCard()
                 }
                 Button { showNavigation = true } label: {
                     VStack(spacing: 3) {
@@ -195,7 +263,7 @@ struct WatchRouteDetailView: View {
                         Text("Start Guidance")
                     }
                 }
-                .buttonStyle(WatchRunButtonStyle(fill: .orange, foreground: .black))
+                .buttonStyle(WatchRunButtonStyle(fill: LatchColor.accent, foreground: LatchColor.onAccent))
                 .frame(maxWidth: .infinity)
                 .frame(height: startHeight)
                 Button { confirmingDelete = true } label: {
@@ -212,6 +280,8 @@ struct WatchRouteDetailView: View {
                 .accessibilityLabel("Delete Watch Copy")
             }
         }
+        .background(LatchColor.canvas)
+        .latchScreen()
         .navigationDestination(isPresented: $showNavigation) { NavigationView(route: route) }
         .alert("Delete Watch Copy?", isPresented: $confirmingDelete) {
             Button("Delete", role: .destructive) { onDelete(); dismiss() }
@@ -224,25 +294,6 @@ struct WatchRouteDetailView: View {
     private func savePaceGoal() {
         route.targetPaceSecondsPerKilometer = paceAlertsEnabled ? targetPace : nil
         onPaceChange(route.targetPaceSecondsPerKilometer)
-    }
-}
-
-struct WatchRunButtonStyle: ButtonStyle {
-    var fill: Color
-    var foreground: Color = .white
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.headline)
-            .multilineTextAlignment(.center)
-            .minimumScaleFactor(0.7)
-            .foregroundStyle(foreground)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(fill.opacity(configuration.isPressed ? 0.72 : 1))
-            )
-            .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 }
 

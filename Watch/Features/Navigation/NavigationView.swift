@@ -45,7 +45,9 @@ struct NavigationView: View {
                 setupPager
             }
         }
-        .containerBackground(.black, for: .navigation)
+        .containerBackground(LatchColor.canvas, for: .navigation)
+        .background(LatchColor.canvas)
+        .tint(LatchColor.accent)
         .navigationBarBackButtonHidden(hidesRunChrome)
         .toolbar(hidesRunChrome ? Visibility.hidden : Visibility.automatic, for: .navigationBar)
         .alert("Run Error", isPresented: Binding(get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })) { Button("OK") {} } message: { Text(model.errorMessage ?? "Unknown error") }
@@ -84,6 +86,7 @@ struct NavigationView: View {
             metricsView.tag(model.isGuidedRun ? 2 : 1)
         }
         .tabViewStyle(.verticalPage)
+        .latchTabPage()
     }
 
     /// Controls sit on the left page so a right swipe from the glance page reveals them.
@@ -97,6 +100,7 @@ struct NavigationView: View {
             metricsView.tag(model.isGuidedRun ? 3 : 2)
         }
         .tabViewStyle(.page(indexDisplayMode: .always))
+        .latchTabPage()
     }
 
     private var mapView: some View {
@@ -104,12 +108,12 @@ struct NavigationView: View {
             if let route = model.route {
                 ForEach(Array(route.segments.enumerated()), id: \.offset) { _, segment in
                     MapPolyline(coordinates: segment.points.map { .init(latitude: $0.latitude, longitude: $0.longitude) })
-                        .stroke(.orange, lineWidth: 4)
+                        .stroke(LatchColor.accent, lineWidth: 4)
                 }
-                Marker("Start", systemImage: "flag.fill", coordinate: .init(latitude: route.start.latitude, longitude: route.start.longitude)).tint(.green)
+                Marker("Start", systemImage: "flag.fill", coordinate: .init(latitude: route.start.latitude, longitude: route.start.longitude)).tint(LatchColor.accent)
                 Marker("Finish", systemImage: "flag.checkered", coordinate: .init(latitude: route.finish.latitude, longitude: route.finish.longitude)).tint(.red)
             }
-            if let location = model.location { Annotation("You", coordinate: location.coordinate) { Image(systemName: "location.fill").foregroundStyle(.blue).padding(4).background(.white, in: Circle()) } }
+            if let location = model.location { Annotation("You", coordinate: location.coordinate) { Image(systemName: "location.fill").foregroundStyle(LatchColor.accent).padding(4).background(LatchColor.card, in: Circle()) } }
         }
         .accessibilityLabel(model.isGuidedRun ? "Route map and current position" : "Current running position")
         .safeAreaInset(edge: .bottom, spacing: 4) {
@@ -119,7 +123,7 @@ struct NavigationView: View {
                 } label: {
                     Label("Recenter", systemImage: "location.fill")
                 }
-                .buttonStyle(WatchRunButtonStyle(fill: .orange, foreground: .black))
+                .buttonStyle(WatchRunButtonStyle(fill: LatchColor.accent, foreground: LatchColor.onAccent))
                 .frame(maxWidth: .infinity)
                 .frame(height: 84)
                 .accessibilityLabel("Recenter map on runner")
@@ -129,6 +133,7 @@ struct NavigationView: View {
             courseAlertBanner
                 .padding(.top, 4)
         }
+        .latchTabPage()
         .onChange(of: model.location?.timestamp) { _, _ in
             if !hasCenteredOnRunner, model.location != nil {
                 hasCenteredOnRunner = true
@@ -158,23 +163,28 @@ struct NavigationView: View {
                     if model.isGuidedRun { metric("Projected", watchDuration(pace.projectedDuration)) }
                 }
                 if let heartRate = model.heartRate { metric("Heart rate", String(format: "%.0f bpm", heartRate)) }
-            }.padding(.horizontal, 4)
+            }
+            .padding(8)
+            .latchCard()
+            .padding(.horizontal, 2)
         }
         .overlay(alignment: .top) {
             courseAlertBanner
         }
+        .latchTabPage()
     }
 
     private var status: some View {
         Group {
             if model.match == nil {
                 Label(model.phase == .active ? "TRACKING RUN" : "WAITING FOR GPS", systemImage: model.phase == .active ? "location.fill" : "location.slash")
+                    .foregroundStyle(LatchColor.accent)
             } else if model.isOffCourse {
                 Label("OFF COURSE", systemImage: "exclamationmark.triangle.fill").foregroundStyle(.red)
             } else if model.isBehindPace {
-                Label("BEHIND GOAL", systemImage: "clock.badge.exclamationmark.fill").foregroundStyle(.yellow)
+                Label("BEHIND GOAL", systemImage: "clock.badge.exclamationmark.fill").foregroundStyle(LatchColor.accent)
             } else {
-                Label("ON ROUTE", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+                Label("ON ROUTE", systemImage: "checkmark.circle.fill").foregroundStyle(LatchColor.accent)
             }
         }
         .font(.headline)
@@ -185,7 +195,7 @@ struct NavigationView: View {
         if model.isOffCourse {
             alertCapsule("OFF COURSE", fill: .red, foreground: .white)
         } else if model.isBehindPace {
-            alertCapsule("BEHIND PACE", fill: .yellow, foreground: .black)
+            alertCapsule("BEHIND PACE", fill: LatchColor.accent, foreground: LatchColor.onAccent)
         }
     }
 
@@ -210,23 +220,24 @@ struct NavigationView: View {
                 glanceView
             case .finishing:
                 ProgressView("Saving…")
+                    .tint(LatchColor.accent)
+                    .foregroundStyle(LatchColor.ink)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             case .finished:
                 finishedWorkout
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .latchTabPage()
     }
 
     private var readyWorkout: some View {
         VStack(spacing: 6) {
             Text(model.runName)
                 .font(.caption2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(LatchColor.muted)
                 .lineLimit(1)
-            Image(systemName: model.isGuidedRun ? "location.fill" : "figure.run")
-                .font(.title3)
-                .foregroundStyle(.orange)
+            LatchIconBadge(systemName: model.isGuidedRun ? "location.fill" : "figure.run", size: 36)
             Button { model.start() } label: {
                 VStack(spacing: 4) {
                     Image(systemName: "figure.run")
@@ -234,7 +245,7 @@ struct NavigationView: View {
                     Text("Start Run")
                 }
             }
-            .buttonStyle(WatchRunButtonStyle(fill: .orange, foreground: .black))
+            .buttonStyle(WatchRunButtonStyle(fill: LatchColor.accent, foreground: LatchColor.onAccent))
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -244,11 +255,13 @@ struct NavigationView: View {
         VStack(spacing: 6) {
             ProgressView(model.startStage?.message ?? "Starting…")
                 .font(.caption)
+                .tint(LatchColor.accent)
+                .foregroundStyle(LatchColor.ink)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity)
             if model.startStage != .workout {
                 Button("Cancel", role: .cancel) { model.cancelStart() }
-                    .buttonStyle(WatchRunButtonStyle(fill: Color(white: 0.28), foreground: .white))
+                    .buttonStyle(WatchRunButtonStyle(fill: LatchColor.chip, foreground: LatchColor.ink))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .accessibilityLabel("Cancel start")
             } else {
@@ -262,14 +275,14 @@ struct NavigationView: View {
         VStack(spacing: 8) {
             Text(model.runName)
                 .font(.caption2.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(LatchColor.muted)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
             runControlButton(
                 title: model.phase == .active ? "Pause" : "Resume",
                 systemImage: model.phase == .active ? "pause.fill" : "play.fill",
-                fill: model.phase == .active ? .yellow : .green,
-                foreground: .black,
+                fill: LatchColor.accent,
+                foreground: LatchColor.onAccent,
                 accessibilityLabel: model.phase == .active ? "Pause run" : "Resume run"
             ) {
                 if model.phase == .active {
@@ -291,6 +304,7 @@ struct NavigationView: View {
         .padding(.horizontal, 2)
         .padding(.bottom, 8)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .latchTabPage()
     }
 
     private func runControlButton(
@@ -325,10 +339,11 @@ struct NavigationView: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(glanceAccessibilityLabel)
         .accessibilityHint("Swipe right for pause and finish")
+        .latchTabPage()
     }
 
     private func glanceStack(timeSize: CGFloat) -> some View {
-        VStack(spacing: 1) {
+        VStack(spacing: 2) {
             Text(glanceStatus.title)
                 .font(.caption2.bold())
                 .foregroundStyle(glanceStatus.color)
@@ -337,18 +352,23 @@ struct NavigationView: View {
             Text(watchDuration(model.elapsed))
                 .font(.system(size: timeSize, weight: .bold, design: .rounded))
                 .monospacedDigit()
-                .foregroundStyle(.white)
+                .foregroundStyle(LatchColor.ink)
                 .lineLimit(1)
                 .minimumScaleFactor(0.5)
             Text(watchDistance(model.actualDistance))
                 .font(.title3.bold().monospacedDigit())
-                .foregroundStyle(.green)
+                .foregroundStyle(LatchColor.accent)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
-            if model.targetPaceSecondsPerKilometer != nil {
-                paceComparison
+            VStack(spacing: 1) {
+                if model.targetPaceSecondsPerKilometer != nil {
+                    paceComparison
+                }
+                secondaryMetrics
             }
-            secondaryMetrics
+            .padding(.vertical, 4)
+            .padding(.horizontal, 2)
+            .background(LatchColor.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
     }
 
@@ -366,8 +386,8 @@ struct NavigationView: View {
                     color: paceTone(pace.scheduleDelta)
                 )
             } else {
-                glanceStat(title: "BEHIND", value: "—", color: .white)
-                glanceStat(title: planCaption, value: "—", color: .white)
+                glanceStat(title: "BEHIND", value: "—", color: LatchColor.ink)
+                glanceStat(title: planCaption, value: "—", color: LatchColor.ink)
             }
         }
     }
@@ -377,7 +397,7 @@ struct NavigationView: View {
             glanceStat(
                 title: "AVG /KM",
                 value: model.averagePace.map { watchPaceMinutes($0) } ?? "—",
-                color: .orange
+                color: LatchColor.ink
             )
             if let heartRate = model.heartRate {
                 glanceStat(
@@ -398,7 +418,7 @@ struct NavigationView: View {
                 .minimumScaleFactor(0.5)
             Text(title)
                 .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(LatchColor.muted)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
         }
@@ -410,17 +430,17 @@ struct NavigationView: View {
             return ("PAUSED · OFF COURSE", .red)
         }
         if model.phase == .paused {
-            return ("PAUSED", .yellow)
+            return ("PAUSED", LatchColor.accent)
         }
         if model.isOffCourse {
             return ("OFF COURSE", .red)
         }
         guard let pace = model.paceProgress else {
-            return ("RUNNING", .white)
+            return ("RUNNING", LatchColor.accent)
         }
-        if pace.scheduleDelta >= 1 { return ("BEHIND", .yellow) }
-        if pace.scheduleDelta <= -1 { return ("AHEAD", .green) }
-        return ("ON PACE", .green)
+        if pace.scheduleDelta >= 1 { return ("BEHIND", LatchColor.accent) }
+        if pace.scheduleDelta <= -1 { return ("AHEAD", LatchColor.ink) }
+        return ("ON PACE", LatchColor.accent)
     }
 
     private var glanceAccessibilityLabel: String {
@@ -454,7 +474,7 @@ struct NavigationView: View {
             VStack(spacing: 7) {
                 if let summary = model.summary {
                     Label(summary.workoutSaved ? "Run Saved" : "Run Ended", systemImage: summary.workoutSaved ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                        .foregroundStyle(summary.workoutSaved ? .green : .yellow)
+                        .foregroundStyle(summary.workoutSaved ? LatchColor.accent : .red)
                     metric("Elapsed", Duration.seconds(summary.elapsed).formatted(.time(pattern: .minuteSecond)))
                     metric("Distance", watchDistance(summary.actualDistance))
                     metric("Average pace", summary.averagePace.map(watchPace) ?? "—")
@@ -465,16 +485,24 @@ struct NavigationView: View {
                     }
                     if let heartRate = summary.heartRate { metric("Heart rate", String(format: "%.0f bpm", heartRate)) }
                     if summary.workoutSaved, !summary.routeSaved {
-                        Text("Workout saved without a location route.").font(.caption2).foregroundStyle(.secondary)
+                        Text("Workout saved without a location route.").font(.caption2).foregroundStyle(LatchColor.muted)
                     }
                 }
             }
-            .padding(.horizontal, 4)
+            .padding(8)
+            .latchCard()
+            .padding(.horizontal, 2)
         }
+        .latchTabPage()
     }
 
     private func metric(_ title: String, _ value: String) -> some View {
-        HStack { Text(title).foregroundStyle(.secondary); Spacer(); Text(value).font(.headline.monospacedDigit()) }.font(.caption)
+        HStack {
+            Text(title).foregroundStyle(LatchColor.muted)
+            Spacer()
+            Text(value).font(.headline.monospacedDigit()).foregroundStyle(LatchColor.ink)
+        }
+        .font(.caption)
     }
 
     private func scheduleText(_ delta: TimeInterval) -> String {
@@ -494,9 +522,9 @@ struct NavigationView: View {
     }
 
     private func paceTone(_ delta: TimeInterval) -> Color {
-        if delta >= 1 { return .yellow }
-        if delta <= -1 { return .green }
-        return .white
+        if delta >= 1 { return LatchColor.accent }
+        if delta <= -1 { return LatchColor.ink }
+        return LatchColor.ink
     }
 
     private func watchPercent(_ value: Double) -> String {

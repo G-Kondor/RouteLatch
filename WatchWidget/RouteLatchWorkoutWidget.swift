@@ -13,7 +13,7 @@ struct RouteLatchWorkoutWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: WorkoutWidgetStore.widgetKind, provider: WorkoutTimelineProvider()) { entry in
             WorkoutWidgetView(entry: entry)
-                .containerBackground(.black, for: .widget)
+                .containerBackground(WidgetLatch.canvas, for: .widget)
         }
         .configurationDisplayName("Live Run")
         .description("See your run and control the active workout.")
@@ -54,10 +54,10 @@ private struct WorkoutWidgetView: View {
     var body: some View {
         if entry.snapshot.phase == .inactive {
             HStack {
-                Image(systemName: "figure.run.circle.fill").foregroundStyle(.orange)
+                Image(systemName: "figure.run.circle.fill").foregroundStyle(WidgetLatch.accent)
                 VStack(alignment: .leading) {
-                    Text("RouteLatch").font(.headline)
-                    Text("No active run").font(.caption2).foregroundStyle(.secondary)
+                    Text("RouteLatch").font(.headline).foregroundStyle(WidgetLatch.ink)
+                    Text("No active run").font(.caption2).foregroundStyle(WidgetLatch.muted)
                 }
             }
             .widgetURL(URL(string: "routelatch://run"))
@@ -66,9 +66,10 @@ private struct WorkoutWidgetView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 4) {
                         Image(systemName: entry.snapshot.phase == .paused ? "pause.circle.fill" : "figure.run")
-                            .foregroundStyle(entry.snapshot.phase == .paused ? .yellow : .green)
+                            .foregroundStyle(WidgetLatch.accent)
                         elapsedText
                             .font(.headline.monospacedDigit())
+                            .foregroundStyle(WidgetLatch.ink)
                     }
                     HStack {
                         Label(distanceText, systemImage: "arrow.trianglehead.swap")
@@ -76,7 +77,7 @@ private struct WorkoutWidgetView: View {
                         Label(paceText, systemImage: "speedometer")
                     }
                     .font(.caption2.monospacedDigit())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(WidgetLatch.muted)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 controlButtons
@@ -103,7 +104,7 @@ private struct WorkoutWidgetView: View {
                         .font(.title2)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
-                .tint(.yellow)
+                .tint(WidgetLatch.accent)
                 .accessibilityLabel("Pause run")
             } else if entry.snapshot.phase == .paused {
                 Button(intent: WorkoutCommandIntent(command: .resume)) {
@@ -111,7 +112,7 @@ private struct WorkoutWidgetView: View {
                         .font(.title2)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
-                .tint(.green)
+                .tint(WidgetLatch.accent)
                 .accessibilityLabel("Resume run")
             }
             Button(intent: WorkoutCommandIntent(command: .finish)) {
@@ -144,6 +145,13 @@ private struct WorkoutWidgetView: View {
             ? String(format: "%d:%02d:%02d", rounded / 3_600, rounded % 3_600 / 60, rounded % 60)
             : String(format: "%d:%02d", rounded / 60, rounded % 60)
     }
+}
+
+private enum WidgetLatch {
+    static let canvas = Color(red: 0.102, green: 0.078, blue: 0.071)
+    static let ink = Color(red: 0.969, green: 0.941, blue: 0.910)
+    static let muted = Color(red: 0.780, green: 0.722, blue: 0.675)
+    static let accent = Color(red: 1.000, green: 0.545, blue: 0.247)
 }
 
 private enum WorkoutWidgetAction: String, AppEnum {
