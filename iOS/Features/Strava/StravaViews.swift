@@ -107,37 +107,18 @@ struct CompletedRunRow: View {
 struct StravaSettingsView: View {
     @ObservedObject var strava: StravaManager
     let pendingRuns: [RecordedRun]
-    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(spacing: 16) {
-                    connectionCard
-                    uploadsCard
-                    footnoteCard
-                }
-                .padding(16)
-            }
-            .latchScreen()
-            .navigationTitle("Strava")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar(.visible, for: .navigationBar)
-            .toolbarBackground(LatchColor.canvas, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
-            .toolbar { Button("Done") { dismiss() } }
-            .alert("Strava Error", isPresented: Binding(get: { strava.errorMessage != nil }, set: { if !$0 { strava.errorMessage = nil } })) {
-                Button("OK") {}
-            } message: {
-                Text(strava.errorMessage ?? "Unknown error")
-            }
+        VStack(spacing: 16) {
+            connectionCard
+            uploadsCard
+            footnoteCard
         }
-        .latchScreen()
     }
 
     private var connectionCard: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Connection")
+            Text("Strava")
                 .font(.headline)
                 .foregroundStyle(LatchColor.ink)
             if !strava.isConfigured {
@@ -184,7 +165,7 @@ struct StravaSettingsView: View {
                 .foregroundStyle(LatchColor.ink)
             Text("\(pendingRuns.count) completed run(s) stored on this iPhone.")
                 .foregroundStyle(LatchColor.muted)
-            Text("Runs are never uploaded automatically. Use the menu beside a completed run to upload it, then check its Strava status manually.")
+            Text("Runs are never uploaded automatically. On the Runs tab, use the menu beside a completed run to upload it, then check its Strava status manually.")
                 .font(.footnote)
                 .foregroundStyle(LatchColor.muted)
         }

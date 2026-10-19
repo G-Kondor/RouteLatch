@@ -6,7 +6,7 @@ struct RouteLatchApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RouteLibraryView(model: model)
+            PhoneShellView(model: model)
                 .tint(LatchColor.accent)
                 .onOpenURL { model.handleIncomingURL($0) }
         }
