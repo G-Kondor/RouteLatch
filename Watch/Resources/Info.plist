@@ -30,6 +30,10 @@
 	<array>
 		<string>workout-processing</string>
 	</array>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>workout-processing</string>
+	</array>
 	<key>WKApplication</key>
 	<true/>
 	<key>CFBundleURLTypes</key>

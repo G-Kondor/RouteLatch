@@ -312,6 +312,18 @@ final class RouteNavigationModel: NSObject, ObservableObject {
 
     var averagePace: Double? { averagePace(elapsed: elapsed, distance: actualDistance) }
 
+    /// The workout session has to keep running through pause and save.
+    /// Dropping this screen before then releases the session and watchOS
+    /// returns to the clock face.
+    var keepsDisplay: Bool {
+        switch phase {
+        case .ready, .finished:
+            false
+        case .starting, .active, .paused, .finishing:
+            true
+        }
+    }
+
     var isGuidedRun: Bool { route != nil }
 
     var runName: String { route?.name ?? "Free Run" }

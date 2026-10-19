@@ -4,6 +4,32 @@ import SwiftUI
 
 struct NavigationView: View {
     @StateObject private var model: RouteNavigationModel
+    @EnvironmentObject private var anchor: WorkoutSessionAnchor
+    private let onClose: () -> Void
+
+    init(
+        route: Route? = nil,
+        freeRunTargetPaceSecondsPerKilometer: Double? = nil,
+        onClose: @escaping () -> Void = {}
+    ) {
+        _model = StateObject(wrappedValue: RouteNavigationModel(
+            route: route,
+            freeRunTargetPaceSecondsPerKilometer: freeRunTargetPaceSecondsPerKilometer
+        ))
+        self.onClose = onClose
+    }
+
+    var body: some View {
+        RunScreen(model: model)
+            .interactiveDismissDisabled(model.keepsDisplay)
+            .onAppear { anchor.present(model, onClose: onClose) }
+            .onDisappear { anchor.releaseIfNotRunning(model) }
+    }
+}
+
+struct RunScreen: View {
+    @ObservedObject var model: RouteNavigationModel
+    @EnvironmentObject private var anchor: WorkoutSessionAnchor
     @State private var mapPosition: MapCameraPosition
     @State private var hasCenteredOnRunner = false
     @State private var setupPage = 0
@@ -11,12 +37,9 @@ struct NavigationView: View {
     @State private var runPage = 1
     @State private var confirmingFinish = false
 
-    init(route: Route? = nil, freeRunTargetPaceSecondsPerKilometer: Double? = nil) {
-        _model = StateObject(wrappedValue: RouteNavigationModel(
-            route: route,
-            freeRunTargetPaceSecondsPerKilometer: freeRunTargetPaceSecondsPerKilometer
-        ))
-        if let route {
+    init(model: RouteNavigationModel) {
+        self.model = model
+        if let route = model.route {
             let bounds = route.bounds
             _mapPosition = State(initialValue: .region(MKCoordinateRegion(
                 center: .init(
@@ -488,6 +511,10 @@ struct NavigationView: View {
                         Text("Workout saved without a location route.").font(.caption2).foregroundStyle(LatchColor.muted)
                     }
                 }
+                Button("Done") { anchor.dismiss() }
+                    .buttonStyle(.borderedProminent)
+                    .tint(LatchColor.accent)
+                    .accessibilityLabel("Done")
             }
             .padding(8)
             .latchCard()

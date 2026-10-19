@@ -186,7 +186,8 @@ struct FreeRunSetupView: View {
         .latchScreen()
         .navigationDestination(isPresented: $showNavigation) {
             NavigationView(
-                freeRunTargetPaceSecondsPerKilometer: paceAlertsEnabled ? targetPace : nil
+                freeRunTargetPaceSecondsPerKilometer: paceAlertsEnabled ? targetPace : nil,
+                onClose: { showNavigation = false }
             )
         }
     }
@@ -282,7 +283,9 @@ struct WatchRouteDetailView: View {
         }
         .background(LatchColor.canvas)
         .latchScreen()
-        .navigationDestination(isPresented: $showNavigation) { NavigationView(route: route) }
+        .navigationDestination(isPresented: $showNavigation) {
+            NavigationView(route: route, onClose: { showNavigation = false })
+        }
         .alert("Delete Watch Copy?", isPresented: $confirmingDelete) {
             Button("Delete", role: .destructive) { onDelete(); dismiss() }
             Button("Cancel", role: .cancel) {}
