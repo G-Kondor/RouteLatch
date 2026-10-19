@@ -1,5 +1,36 @@
 import SwiftUI
 
+/// Phone-wide appearance. `system` clears the override so iOS follows the device setting.
+enum PhoneAppearance: String, CaseIterable, Identifiable {
+    case system
+    case light
+    case dark
+
+    static let storageKey = "RouteLatch.appearance"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .system: "System"
+        case .light: "Light"
+        case .dark: "Dark"
+        }
+    }
+
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .system: nil
+        case .light: .light
+        case .dark: .dark
+        }
+    }
+
+    static func stored(_ rawValue: String) -> PhoneAppearance {
+        PhoneAppearance(rawValue: rawValue) ?? .system
+    }
+}
+
 enum LatchColor {
     static let canvas = Color("LatchCanvas")
     static let card = Color("LatchCard")

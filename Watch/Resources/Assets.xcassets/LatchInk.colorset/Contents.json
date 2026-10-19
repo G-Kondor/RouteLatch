@@ -10,7 +10,7 @@
           "blue": "0.078"
         }
       },
-      "idiom": "universal"
+      "idiom": "watch"
     },
     {
       "color": {
@@ -22,7 +22,7 @@
           "blue": "0.910"
         }
       },
-      "idiom": "universal",
+      "idiom": "watch",
       "appearances": [
         {
           "appearance": "luminosity",
