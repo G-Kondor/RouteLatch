@@ -125,7 +125,7 @@ final class RouteNavigationModel: NSObject, ObservableObject {
                 guard startAttemptID == attemptID else { return }
                 failStart(
                     attemptID: attemptID,
-                    message: "Health workout access is disabled. Enable it in Settings, then try again."
+                    message: "Apple Health isn’t available on this Watch, so the workout can’t start."
                 )
                 return
             }
