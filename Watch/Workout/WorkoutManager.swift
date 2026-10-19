@@ -36,6 +36,7 @@ final class WorkoutManager: NSObject, ObservableObject {
     private var lastAcceptedLocationTimestamp: Date?
     private var fallbackDistance = RunDistanceAccumulator()
     private var canSaveWorkoutRoute = false
+    private var stopContinuation: CheckedContinuation<Void, Never>?
 
     func requestAuthorization() async -> Bool {
         guard HKHealthStore.isHealthDataAvailable(),
@@ -110,6 +111,9 @@ final class WorkoutManager: NSObject, ObservableObject {
         errorMessage = nil
         let start = Date()
         workoutStartedAt = start
+        // Wrist raise returns to this app only while the session stays
+        // .running or .paused, including a paused run. end() happens
+        // after the runner finishes and the workout is saved.
         session.startActivity(with: start)
         try await builder.beginCollection(at: start)
     }
@@ -147,19 +151,24 @@ final class WorkoutManager: NSObject, ObservableObject {
     func resume() { session?.resume() }
 
     func cancelPendingStart() {
-        session?.end()
         builder?.discardWorkout()
-        clear()
+        endSession()
     }
 
     func finish() async throws -> Completion {
         let endedAt = Date()
         let startedAt = workoutStartedAt ?? endedAt
         let points = recordedPoints
-        session?.end()
+        // stopActivity keeps the session alive while the final samples are
+        // saved. end() is what releases the frontmost workout and happens
+        // only after that save.
+        if let session, session.state != .stopped, session.state != .ended, session.state != .notStarted {
+            session.stopActivity(with: endedAt)
+            await waitUntilStopped()
+        }
         guard let builder else {
             let finalDistance = distance
-            clear()
+            endSession()
             return Completion(
                 workoutSaved: false,
                 routeSaved: false,
@@ -177,7 +186,7 @@ final class WorkoutManager: NSObject, ObservableObject {
             try await builder.endCollection(at: .now)
             let finalDistance = healthKitDistance(from: builder) ?? provisionalDistance
             guard let workout = try await builder.finishWorkout() else {
-                clear()
+                endSession()
                 return Completion(
                     workoutSaved: false,
                     routeSaved: false,
@@ -198,7 +207,7 @@ final class WorkoutManager: NSObject, ObservableObject {
                 }
             }
             if routeSaved, routeDataFailed { errorMessage = routeWarning }
-            clear()
+            endSession()
             return Completion(
                 workoutSaved: true,
                 routeSaved: routeSaved,
@@ -210,7 +219,7 @@ final class WorkoutManager: NSObject, ObservableObject {
         } catch {
             workoutLogger.error("Workout finalization failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = "The Health workout could not be finalized, but the run is still queued for Strava."
-            clear()
+            endSession()
             return Completion(
                 workoutSaved: false,
                 routeSaved: false,
@@ -253,6 +262,31 @@ final class WorkoutManager: NSObject, ObservableObject {
         return value
     }
 
+    private func waitUntilStopped() async {
+        if session == nil || session?.state == .stopped || session?.state == .ended { return }
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            stopContinuation = continuation
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(5))
+                self.resumeStopWait()
+            }
+        }
+    }
+
+    private func resumeStopWait() {
+        guard let continuation = stopContinuation else { return }
+        stopContinuation = nil
+        continuation.resume()
+    }
+
+    private func endSession() {
+        if let session, session.state != .ended, session.state != .notStarted {
+            session.end()
+        }
+        resumeStopWait()
+        clear()
+    }
+
     private func clear() {
         session = nil
         builder = nil
@@ -268,7 +302,10 @@ final class WorkoutManager: NSObject, ObservableObject {
 private enum WorkoutManagerError: Error { case routeInsertionFailed }
 
 extension WorkoutManager: HKWorkoutSessionDelegate {
-    nonisolated func workoutSession(_ workoutSession: HKWorkoutSession, didChangeTo toState: HKWorkoutSessionState, from fromState: HKWorkoutSessionState, date: Date) {}
+    nonisolated func workoutSession(_ workoutSession: HKWorkoutSession, didChangeTo toState: HKWorkoutSessionState, from fromState: HKWorkoutSessionState, date: Date) {
+        guard toState == .stopped || toState == .ended else { return }
+        Task { @MainActor in self.resumeStopWait() }
+    }
     nonisolated func workoutSession(_ workoutSession: HKWorkoutSession, didFailWithError error: Error) {
         workoutLogger.error("Workout session failed: \(error.localizedDescription, privacy: .public)")
         Task { @MainActor in errorMessage = error.localizedDescription }
