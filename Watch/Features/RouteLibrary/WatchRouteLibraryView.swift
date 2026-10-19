@@ -14,16 +14,19 @@ struct WatchRouteLibraryView: View {
                         )
                     } label: {
                         Label {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Free Run").font(.headline)
-                                Text("Run without a route").font(.caption2).foregroundStyle(.secondary)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Free Run").font(.title3.bold())
+                                Text("Run without a route").font(.caption).foregroundStyle(.secondary)
                                 if let target = model.freeRunTargetPaceSecondsPerKilometer {
                                     Label(watchPace(target), systemImage: "speedometer")
-                                        .font(.caption2).foregroundStyle(.orange)
+                                        .font(.caption).foregroundStyle(.orange)
                                 }
                             }
+                            .padding(.vertical, 8)
                         } icon: {
-                            Image(systemName: "figure.run.circle.fill").foregroundStyle(.green)
+                            Image(systemName: "figure.run.circle.fill")
+                                .font(.title2)
+                                .foregroundStyle(.green)
                         }
                     }
                 }
@@ -52,20 +55,22 @@ struct WatchRouteLibraryView: View {
                                     onPaceChange: { model.setTargetPace($0, for: route) }
                                 )
                             } label: {
-                                VStack(alignment: .leading) {
-                                    Text(route.name).font(.headline).lineLimit(2)
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(route.name).font(.title3.bold()).lineLimit(2)
                                     Label(watchDistance(route.totalDistance), systemImage: "checkmark.circle.fill").font(.caption).foregroundStyle(.secondary)
                                     if let target = route.targetPaceSecondsPerKilometer {
                                         Label(watchPace(target), systemImage: "speedometer")
-                                            .font(.caption2).foregroundStyle(.orange)
+                                            .font(.caption).foregroundStyle(.orange)
                                     }
                                 }
+                                .padding(.vertical, 8)
                             }
                         }
                     }
                 }
             }
             .navigationTitle("Run")
+            .environment(\.defaultMinListRowHeight, 92)
         }
         .alert("Route Error", isPresented: Binding(get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })) { Button("OK") {} } message: { Text(model.errorMessage ?? "Unknown error") }
     }
@@ -84,33 +89,43 @@ struct FreeRunSetupView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 12) {
-                Image(systemName: "figure.run.circle.fill")
-                    .font(.system(size: 44)).foregroundStyle(.green)
-                Text("Free Run").font(.headline)
-                Text("Run without a route").font(.caption).foregroundStyle(.secondary)
-                Divider()
-                Toggle("Pace alerts", isOn: $paceAlertsEnabled)
-                    .onChange(of: paceAlertsEnabled) { _, _ in savePaceGoal() }
-                Text(watchPace(targetPace))
-                    .font(.title3.bold().monospacedDigit())
-                    .foregroundStyle(paceAlertsEnabled ? .primary : .secondary)
-                Slider(
-                    value: $targetPace,
-                    in: PaceGoalConfiguration.minimumSecondsPerKilometer...PaceGoalConfiguration.maximumSecondsPerKilometer,
-                    step: PaceGoalConfiguration.sliderStep,
-                    onEditingChanged: { editing in if !editing { savePaceGoal() } }
-                )
-                .disabled(!paceAlertsEnabled)
-                .accessibilityLabel("Target pace")
-                .accessibilityValue(watchPace(targetPace))
-                if paceAlertsEnabled {
-                    Text("Alerts when average pace falls behind \(watchPace(targetPace)).")
-                        .font(.caption2).foregroundStyle(.secondary).multilineTextAlignment(.center)
+        GeometryReader { proxy in
+            let buttonHeight = max(proxy.size.height * 0.5, 1)
+            VStack(spacing: 6) {
+                ScrollView {
+                    VStack(spacing: 8) {
+                        Text("Free Run").font(.headline)
+                        Text("Run without a route").font(.caption2).foregroundStyle(.secondary)
+                        Toggle("Pace alerts", isOn: $paceAlertsEnabled)
+                            .onChange(of: paceAlertsEnabled) { _, _ in savePaceGoal() }
+                        Text(watchPace(targetPace))
+                            .font(.title3.bold().monospacedDigit())
+                            .foregroundStyle(paceAlertsEnabled ? .primary : .secondary)
+                        Slider(
+                            value: $targetPace,
+                            in: PaceGoalConfiguration.minimumSecondsPerKilometer...PaceGoalConfiguration.maximumSecondsPerKilometer,
+                            step: PaceGoalConfiguration.sliderStep,
+                            onEditingChanged: { editing in if !editing { savePaceGoal() } }
+                        )
+                        .disabled(!paceAlertsEnabled)
+                        .accessibilityLabel("Target pace")
+                        .accessibilityValue(watchPace(targetPace))
+                        if paceAlertsEnabled {
+                            Text("Alerts when average pace falls behind \(watchPace(targetPace)).")
+                                .font(.caption2).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                        }
+                    }
                 }
-                Button("Start Free Run", systemImage: "figure.run") { showNavigation = true }
-                    .buttonStyle(.borderedProminent)
+                Button { showNavigation = true } label: {
+                    VStack(spacing: 3) {
+                        Image(systemName: "figure.run")
+                            .font(.title2)
+                        Text("Start Free Run")
+                    }
+                }
+                .buttonStyle(WatchRunButtonStyle(fill: .green, foreground: .black))
+                .frame(maxWidth: .infinity)
+                .frame(height: buttonHeight)
             }
         }
         .navigationDestination(isPresented: $showNavigation) {
@@ -144,33 +159,57 @@ struct WatchRouteDetailView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 12) {
-                Image(systemName: "figure.run.circle.fill").font(.system(size: 44)).foregroundStyle(.orange)
-                Text(route.name).font(.headline).multilineTextAlignment(.center)
-                Text(watchDistance(route.totalDistance)).font(.title3.bold())
-                Text("\(route.pointCount) points • \(route.segments.count) segments").font(.caption).foregroundStyle(.secondary)
-                Divider()
-                Toggle("Pace alerts", isOn: $paceAlertsEnabled)
-                    .onChange(of: paceAlertsEnabled) { _, _ in savePaceGoal() }
-                Text(watchPace(targetPace))
-                    .font(.title3.bold().monospacedDigit())
-                    .foregroundStyle(paceAlertsEnabled ? .primary : .secondary)
-                Slider(
-                    value: $targetPace,
-                    in: PaceGoalConfiguration.minimumSecondsPerKilometer...PaceGoalConfiguration.maximumSecondsPerKilometer,
-                    step: PaceGoalConfiguration.sliderStep,
-                    onEditingChanged: { editing in if !editing { savePaceGoal() } }
-                )
-                .disabled(!paceAlertsEnabled)
-                .accessibilityLabel("Target pace")
-                .accessibilityValue(watchPace(targetPace))
-                if paceAlertsEnabled {
-                    Text("Plan: \(watchDuration(route.totalDistance / 1_000 * targetPace))")
-                        .font(.caption).foregroundStyle(.secondary)
+        GeometryReader { proxy in
+            let startHeight = max(proxy.size.height * 0.36, 1)
+            let deleteHeight = max(proxy.size.height * 0.28, 1)
+            VStack(spacing: 6) {
+                ScrollView {
+                    VStack(spacing: 8) {
+                        Text(route.name).font(.headline).multilineTextAlignment(.center)
+                        Text(watchDistance(route.totalDistance)).font(.title3.bold())
+                        Text("\(route.pointCount) points • \(route.segments.count) segments").font(.caption2).foregroundStyle(.secondary)
+                        Toggle("Pace alerts", isOn: $paceAlertsEnabled)
+                            .onChange(of: paceAlertsEnabled) { _, _ in savePaceGoal() }
+                        Text(watchPace(targetPace))
+                            .font(.title3.bold().monospacedDigit())
+                            .foregroundStyle(paceAlertsEnabled ? .primary : .secondary)
+                        Slider(
+                            value: $targetPace,
+                            in: PaceGoalConfiguration.minimumSecondsPerKilometer...PaceGoalConfiguration.maximumSecondsPerKilometer,
+                            step: PaceGoalConfiguration.sliderStep,
+                            onEditingChanged: { editing in if !editing { savePaceGoal() } }
+                        )
+                        .disabled(!paceAlertsEnabled)
+                        .accessibilityLabel("Target pace")
+                        .accessibilityValue(watchPace(targetPace))
+                        if paceAlertsEnabled {
+                            Text("Plan: \(watchDuration(route.totalDistance / 1_000 * targetPace))")
+                                .font(.caption2).foregroundStyle(.secondary)
+                        }
+                    }
                 }
-                Button("Start Guidance", systemImage: "location.fill") { showNavigation = true }.buttonStyle(.borderedProminent)
-                Button("Delete Watch Copy", systemImage: "trash", role: .destructive) { confirmingDelete = true }
+                Button { showNavigation = true } label: {
+                    VStack(spacing: 3) {
+                        Image(systemName: "location.fill")
+                            .font(.title3)
+                        Text("Start Guidance")
+                    }
+                }
+                .buttonStyle(WatchRunButtonStyle(fill: .orange, foreground: .black))
+                .frame(maxWidth: .infinity)
+                .frame(height: startHeight)
+                Button { confirmingDelete = true } label: {
+                    VStack(spacing: 2) {
+                        Image(systemName: "trash")
+                            .font(.title3)
+                        Text("Delete Watch Copy")
+                            .font(.caption.bold())
+                    }
+                }
+                .buttonStyle(WatchRunButtonStyle(fill: .red, foreground: .white))
+                .frame(maxWidth: .infinity)
+                .frame(height: deleteHeight)
+                .accessibilityLabel("Delete Watch Copy")
             }
         }
         .navigationDestination(isPresented: $showNavigation) { NavigationView(route: route) }
@@ -185,6 +224,25 @@ struct WatchRouteDetailView: View {
     private func savePaceGoal() {
         route.targetPaceSecondsPerKilometer = paceAlertsEnabled ? targetPace : nil
         onPaceChange(route.targetPaceSecondsPerKilometer)
+    }
+}
+
+struct WatchRunButtonStyle: ButtonStyle {
+    var fill: Color
+    var foreground: Color = .white
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.headline)
+            .multilineTextAlignment(.center)
+            .minimumScaleFactor(0.7)
+            .foregroundStyle(foreground)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(fill.opacity(configuration.isPressed ? 0.72 : 1))
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 }
 

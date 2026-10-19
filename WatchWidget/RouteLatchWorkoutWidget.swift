@@ -62,22 +62,25 @@ private struct WorkoutWidgetView: View {
             }
             .widgetURL(URL(string: "routelatch://run"))
         } else {
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 4) {
-                    Image(systemName: entry.snapshot.phase == .paused ? "pause.circle.fill" : "figure.run")
-                        .foregroundStyle(entry.snapshot.phase == .paused ? .yellow : .green)
-                    elapsedText
-                        .font(.headline.monospacedDigit())
-                    Spacer(minLength: 2)
-                    controlButtons
+            HStack(alignment: .center, spacing: 6) {
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 4) {
+                        Image(systemName: entry.snapshot.phase == .paused ? "pause.circle.fill" : "figure.run")
+                            .foregroundStyle(entry.snapshot.phase == .paused ? .yellow : .green)
+                        elapsedText
+                            .font(.headline.monospacedDigit())
+                    }
+                    HStack {
+                        Label(distanceText, systemImage: "arrow.trianglehead.swap")
+                        Spacer(minLength: 4)
+                        Label(paceText, systemImage: "speedometer")
+                    }
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.secondary)
                 }
-                HStack {
-                    Label(distanceText, systemImage: "arrow.trianglehead.swap")
-                    Spacer(minLength: 4)
-                    Label(paceText, systemImage: "speedometer")
-                }
-                .font(.caption2.monospacedDigit())
-                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                controlButtons
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .widgetURL(URL(string: "routelatch://workout"))
         }
@@ -93,27 +96,34 @@ private struct WorkoutWidgetView: View {
     }
 
     private var controlButtons: some View {
-        HStack(spacing: 5) {
+        HStack(spacing: 4) {
             if entry.snapshot.phase == .active {
                 Button(intent: WorkoutCommandIntent(command: .pause)) {
                     Image(systemName: "pause.fill")
+                        .font(.title2)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
                 .tint(.yellow)
                 .accessibilityLabel("Pause run")
             } else if entry.snapshot.phase == .paused {
                 Button(intent: WorkoutCommandIntent(command: .resume)) {
                     Image(systemName: "play.fill")
+                        .font(.title2)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
                 .tint(.green)
                 .accessibilityLabel("Resume run")
             }
             Button(intent: WorkoutCommandIntent(command: .finish)) {
                 Image(systemName: "stop.fill")
+                    .font(.title2)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .tint(.red)
             .accessibilityLabel("Finish run")
         }
         .labelStyle(.iconOnly)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var distanceText: String {

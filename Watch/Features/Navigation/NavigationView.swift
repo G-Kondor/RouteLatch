@@ -70,12 +70,16 @@ struct NavigationView: View {
             if let location = model.location { Annotation("You", coordinate: location.coordinate) { Image(systemName: "location.fill").foregroundStyle(.blue).padding(4).background(.white, in: Circle()) } }
         }
         .accessibilityLabel(model.isGuidedRun ? "Route map and current position" : "Current running position")
-        .overlay(alignment: .bottomTrailing) {
+        .safeAreaInset(edge: .bottom, spacing: 4) {
             if model.location != nil {
-                Button { mapPosition = .userLocation(followsHeading: true, fallback: mapPosition) } label: {
-                    Image(systemName: "location.fill")
+                Button {
+                    mapPosition = .userLocation(followsHeading: true, fallback: mapPosition)
+                } label: {
+                    Label("Recenter", systemImage: "location.fill")
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(WatchRunButtonStyle(fill: .orange, foreground: .black))
+                .frame(maxWidth: .infinity)
+                .frame(height: 84)
                 .accessibilityLabel("Recenter map on runner")
             }
         }
@@ -127,47 +131,115 @@ struct NavigationView: View {
     }
 
     private var workoutView: some View {
-        VStack(spacing: 8) {
-            Text(model.runName).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+        Group {
             switch model.phase {
             case .ready:
-                Image(systemName: model.isGuidedRun ? "location.fill" : "figure.run")
-                    .font(.system(size: 34)).foregroundStyle(.orange)
-                Button("Start Run", systemImage: "figure.run") { model.start() }.buttonStyle(.borderedProminent)
+                readyWorkout
             case .starting:
-                ProgressView(model.startStage?.message ?? "Starting…")
-                    .font(.caption)
-                    .multilineTextAlignment(.center)
-                if model.startStage != .workout {
-                    Button("Cancel", role: .cancel) { model.cancelStart() }
-                        .font(.caption)
-                }
+                startingWorkout
             case .active, .paused:
+                runningWorkout
+            case .finishing:
+                ProgressView("Saving…")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            case .finished:
+                finishedWorkout
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var readyWorkout: some View {
+        VStack(spacing: 6) {
+            Text(model.runName)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            Image(systemName: model.isGuidedRun ? "location.fill" : "figure.run")
+                .font(.title3)
+                .foregroundStyle(.orange)
+            Button { model.start() } label: {
+                VStack(spacing: 4) {
+                    Image(systemName: "figure.run")
+                        .font(.title2)
+                    Text("Start Run")
+                }
+            }
+            .buttonStyle(WatchRunButtonStyle(fill: .orange, foreground: .black))
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var startingWorkout: some View {
+        VStack(spacing: 6) {
+            ProgressView(model.startStage?.message ?? "Starting…")
+                .font(.caption)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
+            if model.startStage != .workout {
+                Button("Cancel", role: .cancel) { model.cancelStart() }
+                    .buttonStyle(WatchRunButtonStyle(fill: Color(white: 0.28), foreground: .white))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                Spacer(minLength: 0)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var runningWorkout: some View {
+        VStack(spacing: 6) {
+            VStack(spacing: 2) {
+                Text(model.runName)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
                 Text(watchDuration(model.elapsed))
-                    .font(.system(.title, design: .rounded, weight: .semibold))
+                    .font(.system(.title2, design: .rounded, weight: .bold))
                     .monospacedDigit()
+                    .minimumScaleFactor(0.5)
+                    .lineLimit(1)
                 HStack(spacing: 6) {
                     workoutMetric("Distance", watchDistance(model.actualDistance), color: .green)
                     workoutMetric("Avg pace", model.averagePace.map(watchPace) ?? "—", color: .orange)
                 }
-                HStack(spacing: 18) {
-                    Button {
-                        model.phase == .active ? model.pause() : model.resume()
-                    } label: {
-                        Image(systemName: model.phase == .active ? "pause.fill" : "play.fill")
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(model.phase == .active ? .yellow : .green)
-                    .accessibilityLabel(model.phase == .active ? "Pause run" : "Resume run")
+            }
+            .frame(maxWidth: .infinity)
 
-                    Button(role: .destructive) { confirmingFinish = true } label: {
-                        Image(systemName: "stop.fill")
+            HStack(spacing: 6) {
+                Button {
+                    model.phase == .active ? model.pause() : model.resume()
+                } label: {
+                    VStack(spacing: 3) {
+                        Image(systemName: model.phase == .active ? "pause.fill" : "play.fill")
+                            .font(.title2)
+                        Text(model.phase == .active ? "Pause" : "Resume")
                     }
-                    .buttonStyle(.borderedProminent)
-                    .accessibilityLabel("Finish run")
                 }
-            case .finishing: ProgressView("Saving…")
-            case .finished:
+                .buttonStyle(WatchRunButtonStyle(fill: model.phase == .active ? .yellow : .green, foreground: .black))
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .accessibilityLabel(model.phase == .active ? "Pause run" : "Resume run")
+
+                Button(role: .destructive) { confirmingFinish = true } label: {
+                    VStack(spacing: 3) {
+                        Image(systemName: "stop.fill")
+                            .font(.title2)
+                        Text("Finish")
+                    }
+                }
+                .buttonStyle(WatchRunButtonStyle(fill: .red, foreground: .white))
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .accessibilityLabel("Finish run")
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var finishedWorkout: some View {
+        ScrollView {
+            VStack(spacing: 7) {
                 if let summary = model.summary {
                     Label(summary.workoutSaved ? "Run Saved" : "Run Ended", systemImage: summary.workoutSaved ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
                         .foregroundStyle(summary.workoutSaved ? .green : .yellow)
@@ -184,8 +256,8 @@ struct NavigationView: View {
                     }
                 }
             }
+            .padding(.horizontal, 4)
         }
-        .padding(.horizontal, 4)
     }
 
     private func workoutMetric(_ title: String, _ value: String, color: Color) -> some View {

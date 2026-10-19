@@ -13,6 +13,7 @@
 		A10000000000000000000004 /* PhoneRouteLibraryModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000004 /* PhoneRouteLibraryModel.swift */; };
 		A10000000000000000000005 /* RouteLibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000005 /* RouteLibraryView.swift */; };
 		A10000000000000000000006 /* RouteDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000006 /* RouteDetailView.swift */; };
+		A1000000000000000000000C /* RouteLatchTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000000C /* RouteLatchTheme.swift */; };
 		A10000000000000000000007 /* RouteLatchCore in Frameworks */ = {isa = PBXBuildFile; productRef = F10000000000000000000002 /* RouteLatchCore */; };
 		A10000000000000000000008 /* StravaManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000008 /* StravaManager.swift */; };
 		A10000000000000000000009 /* StravaViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000009 /* StravaViews.swift */; };
@@ -103,6 +104,7 @@
 
 /* Begin PBXFileReference section */
 		B10000000000000000000001 /* RouteLatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteLatchApp.swift; sourceTree = "<group>"; };
+		B1000000000000000000000C /* RouteLatchTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteLatchTheme.swift; sourceTree = "<group>"; };
 		B10000000000000000000002 /* GPXImportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPXImportService.swift; sourceTree = "<group>"; };
 		B10000000000000000000003 /* PhoneConnectivityManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneConnectivityManager.swift; sourceTree = "<group>"; };
 		B10000000000000000000004 /* PhoneRouteLibraryModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneRouteLibraryModel.swift; sourceTree = "<group>"; };
@@ -174,6 +176,7 @@
 			isa = PBXGroup;
 			children = (
 				B10000000000000000000001 /* RouteLatchApp.swift */,
+				E17000000000000000000001 /* Theme */,
 				E16000000000000000000001 /* Strava Integration */,
 				E11000000000000000000001 /* Route Library */,
 				E12000000000000000000001 /* Route Import */,
@@ -227,6 +230,14 @@
 				B10000000000000000000003 /* PhoneConnectivityManager.swift */,
 			);
 			path = Connectivity;
+			sourceTree = "<group>";
+		};
+		E17000000000000000000001 /* Theme */ = {
+			isa = PBXGroup;
+			children = (
+				B1000000000000000000000C /* RouteLatchTheme.swift */,
+			);
+			path = Theme;
 			sourceTree = "<group>";
 		};
 		E16000000000000000000001 /* Strava Integration */ = {
@@ -480,6 +491,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A10000000000000000000001 /* RouteLatchApp.swift in Sources */,
+				A1000000000000000000000C /* RouteLatchTheme.swift in Sources */,
 				A10000000000000000000008 /* StravaManager.swift in Sources */,
 				A10000000000000000000009 /* StravaViews.swift in Sources */,
 				A10000000000000000000002 /* GPXImportService.swift in Sources */,
