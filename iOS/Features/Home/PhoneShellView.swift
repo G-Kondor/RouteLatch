@@ -37,6 +37,7 @@ struct PhoneShellView: View {
     @StateObject private var health = RunningHealthStore()
     @State private var tab = PhoneTab.home
     @State private var importing = false
+    @AppStorage(PhoneAppearance.storageKey) private var appearanceRaw = PhoneAppearance.system.rawValue
 
     var body: some View {
         ZStack {
@@ -71,6 +72,7 @@ struct PhoneShellView: View {
         } message: {
             Text(model.strava.errorMessage ?? "Unknown error")
         }
+        .preferredColorScheme(PhoneAppearance.stored(appearanceRaw).colorScheme)
     }
 
     private func tabPage<Content: View>(_ page: PhoneTab, @ViewBuilder content: () -> Content) -> some View {
@@ -211,12 +213,21 @@ struct CompletedRunsView: View {
 struct PhoneSettingsView: View {
     @ObservedObject var model: PhoneRouteLibraryModel
     @Binding var tab: PhoneTab
+    @AppStorage(PhoneAppearance.storageKey) private var appearanceRaw = PhoneAppearance.system.rawValue
+
+    private var appearanceSelection: Binding<PhoneAppearance> {
+        Binding(
+            get: { PhoneAppearance.stored(appearanceRaw) },
+            set: { appearanceRaw = $0.rawValue }
+        )
+    }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     screenHeader("Settings", subtitle: "Connections stay out of the way")
+                    appearanceCard
                     StravaSettingsView(strava: model.strava, pendingRuns: model.completedRuns)
                     watchWorkflowCard
                 }
@@ -230,6 +241,26 @@ struct PhoneSettingsView: View {
             .phoneChrome(tab: $tab, warning: model.storageWarning)
         }
         .latchScreen()
+    }
+
+    private var appearanceCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Appearance")
+                .font(.headline)
+                .foregroundStyle(LatchColor.ink)
+            Text("Follow the iPhone setting, or keep RouteLatch in light or dark.")
+                .font(.subheadline)
+                .foregroundStyle(LatchColor.muted)
+            Picker("Appearance", selection: appearanceSelection) {
+                ForEach(PhoneAppearance.allCases) { appearance in
+                    Text(appearance.title).tag(appearance)
+                }
+            }
+            .pickerStyle(.segmented)
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .latchCard()
     }
 
     private var watchWorkflowCard: some View {
