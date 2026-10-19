@@ -113,6 +113,27 @@ final class RouteGeometryTests: XCTestCase {
         XCTAssertEqual(progress.plannedElapsed, 1_500, accuracy: 0.001)
         XCTAssertEqual(progress.scheduleDelta, 150, accuracy: 0.001)
         XCTAssertEqual(progress.projectedDuration, 3_300, accuracy: 0.001)
+        XCTAssertEqual(progress.adherencePercent, 90.909, accuracy: 0.01)
+    }
+
+    func testPaceAdherencePercentComparesSpeedWithThePlan() throws {
+        let onPlan = try XCTUnwrap(PaceCalculator.progress(
+            targetPaceSecondsPerKilometer: 300,
+            elapsed: 1_500,
+            distanceCompleted: 5_000,
+            plannedDistance: 10_000
+        ))
+        XCTAssertEqual(onPlan.scheduleDelta, 0, accuracy: 0.001)
+        XCTAssertEqual(onPlan.adherencePercent, 100, accuracy: 0.001)
+
+        let ahead = try XCTUnwrap(PaceCalculator.progress(
+            targetPaceSecondsPerKilometer: 300,
+            elapsed: 1_350,
+            distanceCompleted: 5_000,
+            plannedDistance: 10_000
+        ))
+        XCTAssertLessThan(ahead.scheduleDelta, 0)
+        XCTAssertEqual(ahead.adherencePercent, 111.111, accuracy: 0.01)
     }
 
     func testUnvisitedPlannedDistanceCannotImproveAveragePace() throws {
