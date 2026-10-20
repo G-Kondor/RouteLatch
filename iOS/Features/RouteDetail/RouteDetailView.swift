@@ -81,8 +81,7 @@ struct RouteDetailView: View {
         .navigationTitle(route.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.visible, for: .navigationBar)
-        .toolbarBackground(LatchColor.canvas, for: .navigationBar)
-        .toolbarBackground(.visible, for: .navigationBar)
+        .latchNavigationBar()
     }
 
     private var paceGoalCard: some View {

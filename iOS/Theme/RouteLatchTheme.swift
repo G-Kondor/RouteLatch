@@ -60,13 +60,62 @@ private struct LatchCardModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .background(LatchColor.card, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+            .background {
+                RoundedRectangle(cornerRadius: 26, style: .continuous)
+                    .fill(.ultraThinMaterial)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 26, style: .continuous)
+                            .fill(LatchColor.card.opacity(colorScheme == .dark ? 0.55 : 0.72))
+                    }
+            }
             .overlay(
                 RoundedRectangle(cornerRadius: 26, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(colorScheme == .dark ? 0.12 : 0.05), lineWidth: 1)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(colorScheme == .dark ? 0.2 : 0.72),
+                                Color.white.opacity(colorScheme == .dark ? 0.04 : 0.08)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1
+                    )
             )
             .compositingGroup()
             .shadow(color: .black.opacity(colorScheme == .dark ? 0.35 : 0.07), radius: colorScheme == .dark ? 12 : 16, y: 8)
+    }
+}
+
+private struct LatchGlassModifier: ViewModifier {
+    @Environment(\.colorScheme) private var colorScheme
+    var radius: CGFloat
+    var interactive: Bool
+
+    func body(content: Content) -> some View {
+        if #available(iOS 26, *) {
+            liquidGlass(content)
+        } else {
+            material(content)
+        }
+    }
+
+    @available(iOS 26, *)
+    private func liquidGlass(_ content: Content) -> some View {
+        content.glassEffect(
+            interactive ? .regular.interactive() : .regular,
+            in: RoundedRectangle(cornerRadius: radius, style: .continuous)
+        )
+    }
+
+    private func material(_ content: Content) -> some View {
+        content
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: radius, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: radius, style: .continuous)
+                    .strokeBorder(Color.white.opacity(colorScheme == .dark ? 0.18 : 0.55), lineWidth: 0.8)
+            )
+            .shadow(color: .black.opacity(colorScheme == .dark ? 0.35 : 0.1), radius: 18, y: 8)
     }
 }
 
@@ -83,5 +132,26 @@ extension View {
 
     func latchScreen() -> some View {
         modifier(LatchScreenModifier())
+    }
+
+    /// Blurred glass for floating controls such as the tab bar. Cards stay a lighter frost.
+    func latchGlass(radius: CGFloat = 28, interactive: Bool = false) -> some View {
+        modifier(LatchGlassModifier(radius: radius, interactive: interactive))
+    }
+
+    func latchNavigationBar() -> some View {
+        modifier(LatchNavigationBarModifier())
+    }
+}
+
+private struct LatchNavigationBarModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 26, *) {
+            content
+        } else {
+            content
+                .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+                .toolbarBackground(.visible, for: .navigationBar)
+        }
     }
 }
