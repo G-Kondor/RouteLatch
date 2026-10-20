@@ -255,7 +255,60 @@ public struct DistanceBucket: Equatable, Sendable, Identifiable {
     public let label: String
     public let spokenLabel: String
     public let distanceMeters: Double
+    public let duration: TimeInterval
     public var id: Date { start }
+
+    public var paceSecondsPerKilometer: Double? {
+        guard distanceMeters >= 1, duration > 0 else { return nil }
+        let pace = duration / (distanceMeters / 1_000)
+        return pace.isFinite && pace > 0 ? pace : nil
+    }
+}
+
+/// How full a day is on the year activity grid. Levels are relative to the busiest day in that year.
+public enum ActivityLevel: Int, CaseIterable, Equatable, Sendable {
+    case none = 0
+    case low
+    case moderate
+    case high
+    case peak
+
+    public static func level(distanceMeters: Double, peak: Double) -> ActivityLevel {
+        guard distanceMeters > 0, peak > 0 else { return .none }
+        let ratio = distanceMeters / peak
+        if ratio <= 0.25 { return .low }
+        if ratio <= 0.50 { return .moderate }
+        if ratio <= 0.75 { return .high }
+        return .peak
+    }
+}
+
+public struct ActivityDayCell: Equatable, Sendable, Identifiable {
+    public let date: Date
+    public let distanceMeters: Double
+    public let duration: TimeInterval
+    public let runCount: Int
+    public let level: ActivityLevel
+    /// A day after today, drawn so the current week stays a full column.
+    public let isFuture: Bool
+    public var id: Date { date }
+}
+
+public struct ActivityMonthLabel: Equatable, Sendable, Identifiable {
+    public let column: Int
+    public let title: String
+    public var id: Int { column }
+}
+
+/// Fifty-three week columns, seven rows, matching a contribution graph.
+public struct ActivityYearGrid: Equatable, Sendable {
+    public let weeks: [[ActivityDayCell]]
+    public let monthLabels: [ActivityMonthLabel]
+    /// Seven rows. Monday, Wednesday, and Friday are labeled; the other rows are nil.
+    public let rowLabels: [String?]
+    public let activeDays: Int
+    public let distanceMeters: Double
+    public let runCount: Int
 }
 
 public enum AnalyticsRange: String, CaseIterable, Equatable, Sendable {
@@ -299,6 +352,8 @@ public struct TrainingSnapshot: Equatable, Sendable {
 
 public enum RunAnalytics {
     public static let splitLengthMeters = 1_000.0
+    /// Current week plus fifty-two weeks behind it.
+    static let activityYearWeeks = 53
     public static let minimumPartialSplitMeters = 50.0
     /// GPS altitudes jitter. Only a net rise of at least this many meters counts as climb.
     static let elevationNoiseGateMeters = 3.0
@@ -324,6 +379,67 @@ public enum RunAnalytics {
             }
         }
         return merged.sorted { $0.startedAt > $1.startedAt }
+    }
+
+    /// A year of daily activity, laid out like a contribution graph.
+    /// Columns are weeks and rows follow the calendar's first weekday.
+    public static func activityYear(activities: [AnalyticsActivity], now: Date, calendar: Calendar) -> ActivityYearGrid {
+        let empty = ActivityYearGrid(weeks: [], monthLabels: [], rowLabels: Array(repeating: nil, count: 7), activeDays: 0, distanceMeters: 0, runCount: 0)
+        let today = calendar.startOfDay(for: now)
+        let weekday = calendar.component(.weekday, from: today)
+        let daysFromWeekStart = (weekday - calendar.firstWeekday + 7) % 7
+        guard let thisWeekStart = calendar.date(byAdding: .day, value: -daysFromWeekStart, to: today),
+              let gridStart = calendar.date(byAdding: .weekOfYear, value: -(activityYearWeeks - 1), to: thisWeekStart) else {
+            return empty
+        }
+
+        var totals: [Date: (distance: Double, duration: TimeInterval, count: Int)] = [:]
+        for activity in activities {
+            let day = calendar.startOfDay(for: activity.startedAt)
+            guard day >= gridStart, day <= today else { continue }
+            var entry = totals[day] ?? (0, 0, 0)
+            entry.distance += activity.distanceMeters
+            entry.duration += activity.duration
+            entry.count += 1
+            totals[day] = entry
+        }
+        let peak = totals.values.map(\.distance).max() ?? 0
+
+        var weeks: [[ActivityDayCell]] = []
+        var weekStarts: [Date] = []
+        weeks.reserveCapacity(activityYearWeeks)
+        for week in 0..<activityYearWeeks {
+            guard let weekStart = calendar.date(byAdding: .weekOfYear, value: week, to: gridStart) else { return empty }
+            weekStarts.append(weekStart)
+            var column: [ActivityDayCell] = []
+            column.reserveCapacity(7)
+            for row in 0..<7 {
+                guard let date = calendar.date(byAdding: .day, value: row, to: weekStart) else { return empty }
+                let day = calendar.startOfDay(for: date)
+                let future = day > today
+                let stats = future ? nil : totals[day]
+                let distance = stats?.distance ?? 0
+                column.append(ActivityDayCell(
+                    date: day,
+                    distanceMeters: distance,
+                    duration: stats?.duration ?? 0,
+                    runCount: stats?.count ?? 0,
+                    level: ActivityLevel.level(distanceMeters: distance, peak: peak),
+                    isFuture: future
+                ))
+            }
+            weeks.append(column)
+        }
+
+        let cells = weeks.flatMap { $0 }.filter { !$0.isFuture }
+        return ActivityYearGrid(
+            weeks: weeks,
+            monthLabels: monthLabels(weekStarts: weekStarts, calendar: calendar),
+            rowLabels: rowLabels(calendar: calendar),
+            activeDays: cells.filter { $0.runCount > 0 }.count,
+            distanceMeters: cells.reduce(0) { $0 + $1.distanceMeters },
+            runCount: cells.reduce(0) { $0 + $1.runCount }
+        )
     }
 
     public static func snapshot(
@@ -392,10 +508,14 @@ public enum RunAnalytics {
             energyOrigin: origin(of: energyRuns.map(\.1)),
             energyCount: energyRuns.count,
             buckets: buckets.map { spec in
-                let bucketDistance = windowActivities
-                    .filter { $0.startedAt >= spec.start && $0.startedAt < spec.end }
-                    .reduce(0.0) { $0 + $1.distanceMeters }
-                return DistanceBucket(start: spec.start, label: spec.label, spokenLabel: spec.spokenLabel, distanceMeters: bucketDistance)
+                let matching = windowActivities.filter { $0.startedAt >= spec.start && $0.startedAt < spec.end }
+                return DistanceBucket(
+                    start: spec.start,
+                    label: spec.label,
+                    spokenLabel: spec.spokenLabel,
+                    distanceMeters: matching.reduce(0.0) { $0 + $1.distanceMeters },
+                    duration: matching.reduce(0.0) { $0 + $1.duration }
+                )
             },
             splits: splits,
             splitRunName: featured?.name,
@@ -767,6 +887,37 @@ public enum RunAnalytics {
                 guard let start = calendar.date(byAdding: .month, value: index, to: firstMonth),
                       let end = calendar.date(byAdding: .month, value: 1, to: start) else { return nil }
                 return BucketSpec(start: start, end: end, label: format(start, "MMM", calendar), spokenLabel: format(start, "MMMM yyyy", calendar))
+            }
+        }
+    }
+
+    private static func monthLabels(weekStarts: [Date], calendar: Calendar) -> [ActivityMonthLabel] {
+        var labels: [ActivityMonthLabel] = []
+        var seenMonth: Int?
+        for (column, start) in weekStarts.enumerated() {
+            let month = calendar.component(.month, from: start)
+            let year = calendar.component(.year, from: start)
+            let key = year * 12 + month
+            if key != seenMonth {
+                if labels.last.map({ column - $0.column >= 2 }) ?? true {
+                    labels.append(ActivityMonthLabel(column: column, title: format(start, "MMM", calendar)))
+                }
+                seenMonth = key
+            }
+        }
+        return labels
+    }
+
+    private static func rowLabels(calendar: Calendar) -> [String?] {
+        let symbols = calendar.shortWeekdaySymbols
+        guard symbols.count == 7 else { return Array(repeating: nil, count: 7) }
+        return (0..<7).map { row in
+            let weekday = ((calendar.firstWeekday - 1 + row) % 7) + 1
+            switch weekday {
+            case 2, 4, 6:
+                return symbols[weekday - 1]
+            default:
+                return nil
             }
         }
     }

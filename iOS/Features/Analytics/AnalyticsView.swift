@@ -8,6 +8,7 @@ struct AnalyticsView: View {
     @AppStorage("RouteLatch.analytics.age") private var storedAge = 0
     @State private var range = AnalyticsRange.week
     @State private var editingAge = false
+    @State private var selectedZone: HeartRateZone?
 
     var body: some View {
         NavigationStack {
@@ -34,6 +35,7 @@ struct AnalyticsView: View {
                         } else if health.access == .unavailable {
                             unavailableNote
                         }
+                        yearCard
                         rangePicker
                         if snapshot.runCount == 0 {
                             periodEmpty
@@ -57,6 +59,9 @@ struct AnalyticsView: View {
         .onChange(of: tab) { _, newValue in
             guard newValue == .analytics else { return }
             Task { await health.refresh() }
+        }
+        .onChange(of: range) { _, _ in
+            selectedZone = nil
         }
         .sheet(isPresented: $editingAge) {
             HeartRateAgeSheet(storedAge: $storedAge)
@@ -85,6 +90,9 @@ struct AnalyticsView: View {
         VStack(alignment: .leading, spacing: 16) {
             summaryCard
             distanceCard
+            if snapshot.buckets.contains(where: { $0.paceSecondsPerKilometer != nil }) {
+                paceCard
+            }
             heartCard
             metricGrid
             splitsCard
@@ -104,12 +112,36 @@ struct AnalyticsView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 10)
                         .foregroundStyle(selected ? LatchColor.onAccent : LatchColor.ink)
-                        .background(selected ? LatchColor.accent : LatchColor.chip, in: Capsule())
+                        .background(selected ? LatchColor.accent : Color.clear, in: Capsule())
                 }
                 .buttonStyle(.plain)
                 .accessibilityAddTraits(selected ? .isSelected : AccessibilityTraits())
             }
         }
+        .padding(4)
+        .latchGlass(radius: 24)
+    }
+
+    private var yearCard: some View {
+        let grid = RunAnalytics.activityYear(activities: activities, now: Date(), calendar: .current)
+        return VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Year of activity")
+                    .font(.headline)
+                    .foregroundStyle(LatchColor.ink)
+                Spacer(minLength: 8)
+                Text(yearSummary(grid))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(LatchColor.muted)
+                    .multilineTextAlignment(.trailing)
+            }
+            ActivityYearChart(grid: grid)
+            Text("Each square is a day over the last year.")
+                .font(.caption)
+                .foregroundStyle(LatchColor.muted)
+        }
+        .padding(18)
+        .latchCard()
     }
 
     private var summaryCard: some View {
@@ -153,10 +185,95 @@ struct AnalyticsView: View {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(LatchColor.muted)
             }
-            DistanceChart(buckets: snapshot.buckets)
+            GradientTrendChart(samples: distanceSamples, showsBars: true)
         }
         .padding(18)
         .latchCard()
+    }
+
+    private var paceCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Text("Pace")
+                    .font(.headline)
+                    .foregroundStyle(LatchColor.ink)
+                Spacer(minLength: 8)
+                Text("Faster is higher")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(LatchColor.muted)
+            }
+            GradientTrendChart(samples: paceSamples, showsBars: false)
+        }
+        .padding(18)
+        .latchCard()
+    }
+
+    private var distanceSamples: [TrendChartSample] {
+        snapshot.buckets.enumerated().map { index, bucket in
+            trendSample(
+                index: index,
+                bucket: bucket,
+                value: bucket.distanceMeters,
+                spoken: bucket.distanceMeters > 0 ? bucket.distanceMeters.formattedDistance : "No distance"
+            )
+        }
+    }
+
+    private var paceSamples: [TrendChartSample] {
+        let paces = snapshot.buckets.compactMap(\.paceSecondsPerKilometer)
+        let slowest = paces.max() ?? 0
+        return snapshot.buckets.enumerated().map { index, bucket in
+            let bucketPace = bucket.paceSecondsPerKilometer
+            let plotted = bucketPace.map { slowest - $0 + slowest * 0.2 }
+            return trendSample(
+                index: index,
+                bucket: bucket,
+                value: plotted,
+                spoken: bucketPace.map { self.pace($0) } ?? "No pace"
+            )
+        }
+    }
+
+    private func trendSample(index: Int, bucket: DistanceBucket, value: Double?, spoken: String) -> TrendChartSample {
+        let detail = bucketDetails(bucket, ending: bucketEnd(after: index))
+        return TrendChartSample(
+            id: index,
+            label: bucket.label,
+            title: detail.title,
+            value: value,
+            spoken: spoken,
+            rows: detail.rows
+        )
+    }
+
+    private func bucketEnd(after index: Int) -> Date {
+        if index + 1 < snapshot.buckets.count {
+            return snapshot.buckets[index + 1].start
+        }
+        return snapshot.windowEnd
+    }
+
+    private func bucketDetails(_ bucket: DistanceBucket, ending end: Date) -> (title: String, rows: [ChartDetailRow]) {
+        let matching = snapshot.activities.filter { $0.startedAt >= bucket.start && $0.startedAt < end }
+        var rows = [
+            ChartDetailRow(label: "Distance", value: bucket.distanceMeters > 0 ? bucket.distanceMeters.formattedDistance : "0 m"),
+            ChartDetailRow(label: "Time", value: clock(bucket.duration)),
+            ChartDetailRow(label: "Pace", value: pace(bucket.paceSecondsPerKilometer)),
+            ChartDetailRow(label: "Runs", value: "\(matching.count)")
+        ]
+        if matching.count == 1 {
+            rows.append(ChartDetailRow(label: "Run", value: matching[0].name))
+        }
+        let heartRates = matching.compactMap(\.averageHeartRate)
+        if !heartRates.isEmpty {
+            let average = heartRates.reduce(0, +) / Double(heartRates.count)
+            rows.append(ChartDetailRow(label: "Heart rate", value: "\(Int(average.rounded())) bpm"))
+        }
+        let climbs = matching.compactMap(\.elevationGainMeters)
+        if !climbs.isEmpty {
+            rows.append(ChartDetailRow(label: "Elevation", value: "\(Int(climbs.reduce(0, +).rounded())) m"))
+        }
+        return (bucket.spokenLabel, rows)
     }
 
     private var heartCard: some View {
@@ -164,11 +281,27 @@ struct AnalyticsView: View {
             Text("Heart-rate zones")
                 .font(.headline)
                 .foregroundStyle(LatchColor.ink)
+            if !snapshot.zones.isEmpty {
+                zoneStack
+            }
             if snapshot.zones.isEmpty {
                 heartEmpty
             } else {
                 ForEach(snapshot.zones) { share in
-                    zoneRow(share)
+                    Button {
+                        selectedZone = selectedZone == share.zone ? nil : share.zone
+                    } label: {
+                        zoneRow(share)
+                            .padding(8)
+                            .background(
+                                selectedZone == share.zone ? LatchColor.accentSoft : Color.clear,
+                                in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+                if let selectedZone, let share = snapshot.zones.first(where: { $0.zone == selectedZone }) {
+                    ChartPointOverview(title: "\(share.zone.title) zone", rows: zoneDetails(share))
                 }
                 Text("Based on \(clock(snapshot.measuredHeartRate)) of heart-rate samples from \(originName(snapshot.heartRateOrigin)).")
                     .font(.caption)
@@ -279,19 +412,9 @@ struct AnalyticsView: View {
                     .font(.subheadline)
                     .foregroundStyle(LatchColor.muted)
             } else {
-                ForEach(Array(snapshot.splits.prefix(30))) { split in
-                    HStack {
-                        Text(split.isPartial ? String(format: "%.1f km", split.distanceMeters / 1_000) : "\(split.index) km")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(LatchColor.ink)
-                        Spacer(minLength: 8)
-                        Text(pace(split.paceSecondsPerKilometer))
-                            .font(.subheadline.monospacedDigit())
-                            .foregroundStyle(LatchColor.ink)
-                    }
-                }
-                if snapshot.splits.count > 30 {
-                    Text("\(snapshot.splits.count - 30) more splits")
+                SplitPaceChart(splits: snapshot.splits) { pace($0) }
+                if snapshot.splits.count > 12 {
+                    Text("\(snapshot.splits.count - 12) more splits")
                         .font(.caption)
                         .foregroundStyle(LatchColor.muted)
                 }
@@ -450,7 +573,7 @@ struct AnalyticsView: View {
             .foregroundStyle(LatchColor.ink)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(12)
-            .background(LatchColor.chip, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .latchGlass(radius: 16)
     }
 
     private func summaryStat(_ title: String, _ value: String) -> some View {
@@ -522,7 +645,16 @@ struct AnalyticsView: View {
                 .frame(height: 8)
                 .overlay(alignment: .leading) {
                     Capsule()
-                        .fill(LatchColor.accent.opacity(zoneOpacity(share.zone)))
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    LatchColor.accent.opacity(zoneOpacity(share.zone) * 0.45),
+                                    LatchColor.accent.opacity(zoneOpacity(share.zone))
+                                ],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
                         .scaleEffect(x: share.fraction, y: 1, anchor: .leading)
                 }
                 .clipShape(Capsule())
@@ -556,6 +688,64 @@ struct AnalyticsView: View {
             return "\(share.lowerBeatsPerMinute)–\(upper) bpm"
         }
         return "\(share.lowerBeatsPerMinute)+ bpm"
+    }
+
+    private var zoneStack: some View {
+        GeometryReader { geo in
+            HStack(spacing: 0) {
+                ForEach(snapshot.zones) { share in
+                    Rectangle()
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    LatchColor.accent.opacity(max(0.28, zoneOpacity(share.zone) * 0.55)),
+                                    LatchColor.accent.opacity(zoneOpacity(share.zone))
+                                ],
+                                startPoint: .bottom,
+                                endPoint: .top
+                            )
+                        )
+                        .frame(width: geo.size.width * share.fraction)
+                }
+            }
+            .contentShape(Rectangle())
+            .gesture(
+                SpatialTapGesture()
+                    .onEnded { value in
+                        guard geo.size.width > 0, let zone = zone(at: value.location.x, width: geo.size.width) else { return }
+                        selectedZone = selectedZone == zone ? nil : zone
+                    }
+            )
+        }
+        .frame(height: 16)
+        .background(LatchColor.chip)
+        .clipShape(Capsule())
+        .accessibilityHidden(true)
+    }
+
+    private func zone(at x: CGFloat, width: CGFloat) -> HeartRateZone? {
+        let fraction = min(1, max(0, x / width))
+        var cursor = 0.0
+        for share in snapshot.zones where share.fraction > 0 {
+            cursor += share.fraction
+            if fraction <= cursor {
+                return share.zone
+            }
+        }
+        return snapshot.zones.last { $0.fraction > 0 }?.zone
+    }
+
+    private func zoneDetails(_ share: HeartRateZoneShare) -> [ChartDetailRow] {
+        [
+            ChartDetailRow(label: "Time", value: clock(share.duration)),
+            ChartDetailRow(label: "Share", value: "\(Int((share.fraction * 100).rounded()))%"),
+            ChartDetailRow(label: "Range", value: bpmRange(share))
+        ]
+    }
+
+    private func yearSummary(_ grid: ActivityYearGrid) -> String {
+        let days = grid.activeDays == 1 ? "1 day" : "\(grid.activeDays) days"
+        return "\(days) · \(grid.distanceMeters.formattedDistance)"
     }
 
     private func zoneOpacity(_ zone: HeartRateZone) -> Double {
@@ -612,39 +802,6 @@ struct AnalyticsView: View {
     }
 }
 
-private struct DistanceChart: View {
-    let buckets: [DistanceBucket]
-
-    var body: some View {
-        let peak = max(buckets.map(\.distanceMeters).max() ?? 0, 1)
-        HStack(alignment: .bottom, spacing: buckets.count > 8 ? 3 : 8) {
-            ForEach(buckets) { bucket in
-                VStack(spacing: 6) {
-                    Spacer(minLength: 0)
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .fill(bucket.distanceMeters > 0 ? LatchColor.accent : LatchColor.chip)
-                        .frame(height: barHeight(bucket.distanceMeters, peak: peak))
-                    Text(bucket.label)
-                        .font(.system(size: buckets.count > 8 ? 9 : 11, weight: .semibold))
-                        .foregroundStyle(LatchColor.muted)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.5)
-                }
-                .frame(maxWidth: .infinity)
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel(bucket.spokenLabel)
-                .accessibilityValue(bucket.distanceMeters > 0 ? bucket.distanceMeters.formattedDistance : "No distance")
-            }
-        }
-        .frame(height: 132)
-    }
-
-    private func barHeight(_ distance: Double, peak: Double) -> CGFloat {
-        guard distance > 0 else { return 8 }
-        return max(12, 96 * distance / peak)
-    }
-}
-
 private struct HeartRateAgeSheet: View {
     @Binding var storedAge: Int
     @Environment(\.dismiss) private var dismiss
@@ -696,7 +853,10 @@ private struct HeartRateAgeSheet: View {
             }
             .padding(20)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .background(LatchColor.canvas)
+            .background {
+                Rectangle().fill(.ultraThinMaterial)
+                Rectangle().fill(LatchColor.canvas.opacity(0.72))
+            }
             .navigationTitle("Heart-rate max")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

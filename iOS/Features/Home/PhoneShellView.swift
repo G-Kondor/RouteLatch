@@ -118,7 +118,7 @@ struct PhoneTabBar: View {
         }
         .padding(.horizontal, 4)
         .padding(.vertical, 8)
-        .latchCard()
+        .latchGlass(radius: 32, interactive: true)
         .padding(.horizontal, 16)
         .padding(.bottom, 6)
     }
@@ -134,7 +134,7 @@ extension View {
                         .foregroundStyle(LatchColor.ink)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(12)
-                        .background(LatchColor.chip, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .latchGlass(radius: 16)
                         .padding(.horizontal, 16)
                         .accessibilityLabel("Storage warning: \(warning)")
                 }

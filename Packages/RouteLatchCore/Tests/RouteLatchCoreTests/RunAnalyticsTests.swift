@@ -193,11 +193,54 @@ final class RunAnalyticsTests: XCTestCase {
         XCTAssertEqual(snapshot.distanceMeters, 7_000, accuracy: 0.1)
         XCTAssertEqual(snapshot.buckets.count, 7)
         XCTAssertEqual(snapshot.buckets.last?.distanceMeters ?? 0, 7_000, accuracy: 0.1)
+        XCTAssertEqual(snapshot.buckets.last?.duration ?? 0, 2_600, accuracy: 0.1)
+        XCTAssertEqual(snapshot.buckets.last?.paceSecondsPerKilometer ?? 0, 2_600.0 / 7, accuracy: 0.1)
         XCTAssertEqual(snapshot.distanceOrigin, .combined)
         XCTAssertEqual(snapshot.elevationGainMeters, 30)
         XCTAssertEqual(snapshot.elevationOrigin, .combined)
         XCTAssertEqual(RunAnalytics.snapshot(activities: [], range: .month, now: now, calendar: calendar, zones: .init(age: nil)).buckets.count, 4)
         XCTAssertEqual(RunAnalytics.snapshot(activities: [], range: .year, now: now, calendar: calendar, zones: .init(age: nil)).buckets.count, 12)
+    }
+
+    func testActivityYearGridPlacesRunsAndScalesLevels() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        calendar.locale = Locale(identifier: "en_US_POSIX")
+        calendar.firstWeekday = 2
+        let today = calendar.startOfDay(for: start)
+        let sameDay = activity(startedAt: start, distance: 4_000, duration: 1_200)
+        let laterSameDay = activity(startedAt: start.addingTimeInterval(600), distance: 1_000, duration: 300)
+        let saturday = activity(startedAt: today.addingTimeInterval(-10 * 86_400), distance: 1_000, duration: 400)
+        let tooOld = activity(startedAt: today.addingTimeInterval(-400 * 86_400), distance: 9_000, duration: 3_000)
+        let grid = RunAnalytics.activityYear(
+            activities: [sameDay, laterSameDay, saturday, tooOld],
+            now: start,
+            calendar: calendar
+        )
+
+        XCTAssertEqual(grid.weeks.count, 53)
+        XCTAssertTrue(grid.weeks.allSatisfy { $0.count == 7 })
+        let todayCell = grid.weeks[52][1]
+        XCTAssertEqual(todayCell.date, today)
+        XCTAssertEqual(todayCell.distanceMeters, 5_000, accuracy: 0.1)
+        XCTAssertEqual(todayCell.runCount, 2)
+        XCTAssertEqual(todayCell.level, .peak)
+        XCTAssertFalse(todayCell.isFuture)
+        XCTAssertEqual(grid.weeks[52][0].level, .none)
+        XCTAssertTrue(grid.weeks[52][2].isFuture)
+        XCTAssertEqual(grid.weeks[50][5].distanceMeters, 1_000, accuracy: 0.1)
+        XCTAssertEqual(grid.weeks[50][5].level, .low)
+        XCTAssertEqual(grid.activeDays, 2)
+        XCTAssertEqual(grid.runCount, 3)
+        XCTAssertEqual(grid.distanceMeters, 6_000, accuracy: 0.1)
+        XCTAssertEqual(grid.rowLabels[0], calendar.shortWeekdaySymbols[1])
+        XCTAssertNil(grid.rowLabels[1])
+        XCTAssertEqual(grid.rowLabels[2], calendar.shortWeekdaySymbols[3])
+        XCTAssertEqual(grid.rowLabels[4], calendar.shortWeekdaySymbols[5])
+        XCTAssertEqual(grid.monthLabels.map(\.column), grid.monthLabels.map(\.column).sorted())
+        XCTAssertTrue(grid.monthLabels.contains { $0.title == "Nov" })
+        XCTAssertEqual(ActivityLevel.level(distanceMeters: 0, peak: 10), .none)
+        XCTAssertEqual(ActivityLevel.level(distanceMeters: 10, peak: 10), .peak)
     }
 
     private func snapshot(activities: [AnalyticsActivity], settings: HeartRateZoneSettings) -> TrainingSnapshot {
