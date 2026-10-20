@@ -1,17 +1,57 @@
 import RouteLatchCore
 import SwiftUI
 
+struct ChartDetailRow: Equatable {
+    let label: String
+    let value: String
+}
+
 struct TrendChartSample: Identifiable {
     let id: Int
     let label: String
+    let title: String
     let value: Double?
     let spoken: String
+    let rows: [ChartDetailRow]
+}
+
+struct ChartPointOverview: View {
+    let title: String
+    let rows: [ChartDetailRow]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(LatchColor.ink)
+                .lineLimit(2)
+            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(row.label)
+                        .font(.caption)
+                        .foregroundStyle(LatchColor.muted)
+                    Spacer(minLength: 8)
+                    Text(row.value)
+                        .font(.caption.bold().monospacedDigit())
+                        .foregroundStyle(LatchColor.ink)
+                        .multilineTextAlignment(.trailing)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.7)
+                }
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .latchGlass(radius: 16)
+        .accessibilityElement(children: .combine)
+    }
 }
 
 /// Area and bar chart with a vertical brand gradient, in the style of a training trend.
 struct GradientTrendChart: View {
     let samples: [TrendChartSample]
     var showsBars = true
+    @State private var selectedID: Int?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -22,27 +62,69 @@ struct GradientTrendChart: View {
                 }
                 .overlay {
                     ZStack {
-                        peakMarker(layout)
-                        callout(layout)
+                        if selectedSample == nil {
+                            peakMarker(layout)
+                            callout(layout)
+                        }
+                        selectionMarker(layout)
                     }
+                }
+                .contentShape(Rectangle())
+                .gesture(
+                    SpatialTapGesture()
+                        .onEnded { value in
+                            toggleSelection(at: value.location.x, layout: layout)
+                        }
+                )
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(selectedSample?.title ?? "Chart")
+                .accessibilityValue(selectedAccessibilityValue)
+                .accessibilityHint("Tap a point, or swipe up and down, to see its numbers.")
+                .accessibilityAdjustableAction { direction in
+                    adjustSelection(direction)
                 }
             }
             .frame(height: 168)
             labels
+            if let selectedSample {
+                ChartPointOverview(title: selectedSample.title, rows: selectedSample.rows)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
         }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(accessibilitySummary)
+        .animation(.snappy(duration: 0.2), value: selectedID)
+        .onChange(of: samples.map(\.title)) { _, _ in
+            selectedID = nil
+        }
+    }
+
+    private var selectedSample: TrendChartSample? {
+        samples.first { $0.id == selectedID }
+    }
+
+    private var selectedAccessibilityValue: String {
+        guard let selectedSample else { return accessibilitySummary }
+        let details = selectedSample.rows.map { "\($0.label) \($0.value)" }.joined(separator: ", ")
+        return "\(selectedSample.title). \(details)"
     }
 
     private var labels: some View {
         HStack(spacing: 0) {
             ForEach(samples) { sample in
-                Text(sample.label)
-                    .font(.system(size: samples.count > 8 ? 9 : 11, weight: .semibold))
-                    .foregroundStyle(LatchColor.muted)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.5)
-                    .frame(maxWidth: .infinity)
+                let selected = sample.id == selectedID
+                Button {
+                    selectedID = selected ? nil : sample.id
+                } label: {
+                    Text(sample.label)
+                        .font(.system(size: samples.count > 8 ? 9 : 11, weight: selected ? .bold : .semibold))
+                        .foregroundStyle(selected ? LatchColor.accent : LatchColor.muted)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.5)
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(sample.title)
+                .accessibilityValue(sample.rows.map { "\($0.label) \($0.value)" }.joined(separator: ", "))
+                .accessibilityAddTraits(selected ? .isSelected : AccessibilityTraits())
             }
         }
     }
@@ -81,7 +163,7 @@ struct GradientTrendChart: View {
     }
 
     private func peakMarker(_ layout: TrendLayout) -> some View {
-        Group {
+        ZStack {
             if let peak = layout.peak {
                 Circle()
                     .fill(LatchColor.canvas)
@@ -90,10 +172,12 @@ struct GradientTrendChart: View {
                     .position(peak.point)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .allowsHitTesting(false)
     }
 
     private func callout(_ layout: TrendLayout) -> some View {
-        Group {
+        ZStack {
             if let peak = layout.peak {
                 Text(peak.spoken)
                     .font(.caption2.bold().monospacedDigit())
@@ -104,12 +188,64 @@ struct GradientTrendChart: View {
                     .position(x: layout.calloutX(for: peak.point), y: max(12, peak.point.y - 18))
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .allowsHitTesting(false)
+    }
+
+    private func selectionMarker(_ layout: TrendLayout) -> some View {
+        ZStack {
+            if let selected = selectionPoint(layout) {
+                Rectangle()
+                    .fill(LatchColor.accent.opacity(0.45))
+                    .frame(width: 1.5, height: max(1, layout.bottom - 28))
+                    .position(x: selected.x, y: (layout.bottom + 28) / 2)
+                Circle()
+                    .fill(LatchColor.canvas)
+                    .frame(width: 12, height: 12)
+                    .overlay(Circle().strokeBorder(LatchColor.accent, lineWidth: 2.5))
+                    .position(x: selected.x, y: selected.y)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .allowsHitTesting(false)
+    }
+
+    private func selectionPoint(_ layout: TrendLayout) -> CGPoint? {
+        guard let index = samples.firstIndex(where: { $0.id == selectedID }) else { return nil }
+        let count = CGFloat(max(samples.count, 1))
+        let x = layout.width / count * (CGFloat(index) + 0.5)
+        let y = layout.points.indices.contains(index) ? (layout.points[index]?.y ?? layout.bottom) : layout.bottom
+        return CGPoint(x: x, y: y)
+    }
+
+    private func toggleSelection(at x: CGFloat, layout: TrendLayout) {
+        guard !samples.isEmpty, layout.width > 0 else { return }
+        let step = layout.width / CGFloat(samples.count)
+        let index = min(samples.count - 1, max(0, Int(x / step)))
+        let id = samples[index].id
+        selectedID = selectedID == id ? nil : id
+    }
+
+    private func adjustSelection(_ direction: AccessibilityAdjustmentDirection) {
+        guard !samples.isEmpty else { return }
+        let current = samples.firstIndex { $0.id == selectedID }
+        let next: Int
+        switch direction {
+        case .increment:
+            next = min(samples.count - 1, (current ?? -1) + 1)
+        case .decrement:
+            next = max(0, (current ?? samples.count) - 1)
+        @unknown default:
+            return
+        }
+        selectedID = samples[next].id
     }
 }
 
 struct SplitPaceChart: View {
     let splits: [KilometerSplit]
     let paceText: (Double) -> String
+    @State private var selectedIndex: Int?
 
     private var visible: [KilometerSplit] { Array(splits.prefix(12)) }
 
@@ -118,39 +254,65 @@ struct SplitPaceChart: View {
         let fastest = visible.map(\.paceSecondsPerKilometer).min() ?? slowest
         VStack(spacing: 7) {
             ForEach(visible) { split in
-                HStack(spacing: 8) {
-                    Text(split.isPartial ? String(format: "%.1f", split.distanceMeters / 1_000) : "\(split.index)")
-                        .font(.caption.bold().monospacedDigit())
-                        .foregroundStyle(LatchColor.muted)
-                        .frame(width: 26, alignment: .trailing)
-                    GeometryReader { geo in
-                        let width = max(8, geo.size.width * split.paceSecondsPerKilometer / slowest)
-                        let strength = paceStrength(split.paceSecondsPerKilometer, fastest: fastest, slowest: slowest)
-                        Capsule()
-                            .fill(LatchColor.chip)
-                            .overlay(alignment: .leading) {
-                                Capsule()
-                                    .fill(
-                                        LinearGradient(
-                                            colors: [LatchColor.accent.opacity(strength), LatchColor.accent.opacity(0.22)],
-                                            startPoint: .leading,
-                                            endPoint: .trailing
+                let selected = selectedIndex == split.index
+                Button {
+                    selectedIndex = selected ? nil : split.index
+                } label: {
+                    HStack(spacing: 8) {
+                        Text(split.isPartial ? String(format: "%.1f", split.distanceMeters / 1_000) : "\(split.index)")
+                            .font(.caption.bold().monospacedDigit())
+                            .foregroundStyle(selected ? LatchColor.accent : LatchColor.muted)
+                            .frame(width: 26, alignment: .trailing)
+                        GeometryReader { geo in
+                            let width = max(8, geo.size.width * split.paceSecondsPerKilometer / slowest)
+                            let strength = paceStrength(split.paceSecondsPerKilometer, fastest: fastest, slowest: slowest)
+                            Capsule()
+                                .fill(LatchColor.chip)
+                                .overlay(alignment: .leading) {
+                                    Capsule()
+                                        .fill(
+                                            LinearGradient(
+                                                colors: [LatchColor.accent.opacity(strength), LatchColor.accent.opacity(0.22)],
+                                                startPoint: .leading,
+                                                endPoint: .trailing
+                                            )
                                         )
-                                    )
-                                    .frame(width: width)
-                            }
+                                        .frame(width: width)
+                                }
+                        }
+                        .frame(height: 10)
+                        Text(paceText(split.paceSecondsPerKilometer))
+                            .font(.caption.bold().monospacedDigit())
+                            .foregroundStyle(LatchColor.ink)
+                            .frame(width: 72, alignment: .trailing)
                     }
-                    .frame(height: 10)
-                    Text(paceText(split.paceSecondsPerKilometer))
-                        .font(.caption.bold().monospacedDigit())
-                        .foregroundStyle(LatchColor.ink)
-                        .frame(width: 72, alignment: .trailing)
+                    .padding(.vertical, 4)
+                    .padding(.horizontal, 6)
+                    .background(selected ? LatchColor.accentSoft : Color.clear, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
+                .buttonStyle(.plain)
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(split.isPartial ? "Partial kilometer" : "Kilometer \(split.index)")
-                .accessibilityValue(paceText(split.paceSecondsPerKilometer))
+                .accessibilityValue("\(split.distanceMeters.formattedDistance), \(chartClock(split.duration)), \(paceText(split.paceSecondsPerKilometer))")
+                .accessibilityAddTraits(selected ? .isSelected : AccessibilityTraits())
+            }
+            if let split = visible.first(where: { $0.index == selectedIndex }) {
+                ChartPointOverview(title: splitTitle(split), rows: splitRows(split))
             }
         }
+        .animation(.snappy(duration: 0.2), value: selectedIndex)
+    }
+
+    private func splitTitle(_ split: KilometerSplit) -> String {
+        split.isPartial ? String(format: "%.1f km", split.distanceMeters / 1_000) : "Kilometer \(split.index)"
+    }
+
+    private func splitRows(_ split: KilometerSplit) -> [ChartDetailRow] {
+        [
+            ChartDetailRow(label: "Distance", value: split.distanceMeters.formattedDistance),
+            ChartDetailRow(label: "Time", value: chartClock(split.duration)),
+            ChartDetailRow(label: "Pace", value: paceText(split.paceSecondsPerKilometer))
+        ]
     }
 
     private func paceStrength(_ pace: Double, fastest: Double, slowest: Double) -> Double {
@@ -163,6 +325,7 @@ struct SplitPaceChart: View {
 
 struct ActivityYearChart: View {
     let grid: ActivityYearGrid
+    @State private var selectedDay: Date?
 
     private let cellSize: CGFloat = 12
     private let cellGap: CGFloat = 3
@@ -171,6 +334,7 @@ struct ActivityYearChart: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 6) {
                 weekdayLabels
+                    .accessibilityHidden(true)
                 ScrollView(.horizontal, showsIndicators: false) {
                     VStack(alignment: .leading, spacing: cellGap) {
                         monthLabels
@@ -178,7 +342,7 @@ struct ActivityYearChart: View {
                             ForEach(grid.weeks.indices, id: \.self) { column in
                                 VStack(spacing: cellGap) {
                                     ForEach(grid.weeks[column]) { day in
-                                        dayCell(day)
+                                        dayButton(day)
                                     }
                                 }
                             }
@@ -186,12 +350,75 @@ struct ActivityYearChart: View {
                     }
                 }
                 .defaultScrollAnchor(.trailing)
+                .accessibilityHidden(true)
             }
             legend
+                .accessibilityHidden(true)
+            if let selected = selectedCell {
+                ChartPointOverview(title: selected.date.formatted(date: .abbreviated, time: .omitted), rows: dayRows(selected))
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
         }
-        .accessibilityElement(children: .ignore)
+        .animation(.snappy(duration: 0.2), value: selectedDay)
+        .accessibilityElement(children: .contain)
         .accessibilityLabel("Year of activity")
-        .accessibilityValue(summary)
+        .accessibilityValue(selectedAccessibilityValue)
+        .accessibilityHint("Swipe up or down to inspect an active day.")
+        .accessibilityAdjustableAction { direction in
+            adjustSelection(direction)
+        }
+    }
+
+    private var selectedCell: ActivityDayCell? {
+        guard let selectedDay else { return nil }
+        return grid.weeks.flatMap { $0 }.first { $0.date == selectedDay && !$0.isFuture }
+    }
+
+    private var activeDays: [ActivityDayCell] {
+        grid.weeks.flatMap { $0 }.filter { !$0.isFuture && $0.runCount > 0 }
+    }
+
+    private var selectedAccessibilityValue: String {
+        guard let selected = selectedCell else { return summary }
+        let details = dayRows(selected).map { "\($0.label) \($0.value)" }.joined(separator: ", ")
+        return "\(selected.date.formatted(date: .abbreviated, time: .omitted)). \(details)"
+    }
+
+    private func dayButton(_ day: ActivityDayCell) -> some View {
+        let selected = selectedDay == day.date && !day.isFuture
+        return Button {
+            guard !day.isFuture else { return }
+            selectedDay = selected ? nil : day.date
+        } label: {
+            dayCell(day, selected: selected)
+        }
+        .buttonStyle(.plain)
+        .disabled(day.isFuture)
+        .accessibilityHidden(true)
+    }
+
+    private func dayRows(_ day: ActivityDayCell) -> [ChartDetailRow] {
+        [
+            ChartDetailRow(label: "Distance", value: day.distanceMeters > 0 ? day.distanceMeters.formattedDistance : "0 m"),
+            ChartDetailRow(label: "Time", value: chartClock(day.duration)),
+            ChartDetailRow(label: "Runs", value: "\(day.runCount)")
+        ]
+    }
+
+    private func adjustSelection(_ direction: AccessibilityAdjustmentDirection) {
+        let days = activeDays
+        guard !days.isEmpty else { return }
+        let current = days.firstIndex { $0.date == selectedDay }
+        let next: Int
+        switch direction {
+        case .increment:
+            next = min(days.count - 1, (current ?? -1) + 1)
+        case .decrement:
+            next = max(0, (current ?? days.count) - 1)
+        @unknown default:
+            return
+        }
+        selectedDay = days[next].date
     }
 
     private var summary: String {
@@ -229,10 +456,16 @@ struct ActivityYearChart: View {
         }
     }
 
-    private func dayCell(_ day: ActivityDayCell) -> some View {
+    private func dayCell(_ day: ActivityDayCell, selected: Bool) -> some View {
         RoundedRectangle(cornerRadius: 3, style: .continuous)
             .fill(activityColor(day.level, future: day.isFuture))
             .frame(width: cellSize, height: cellSize)
+            .overlay {
+                if selected {
+                    RoundedRectangle(cornerRadius: 3, style: .continuous)
+                        .strokeBorder(LatchColor.ink, lineWidth: 1.5)
+                }
+            }
     }
 
     private var legend: some View {
@@ -366,6 +599,14 @@ private struct TrendStroke: Shape {
         }
         return path
     }
+}
+
+private func chartClock(_ seconds: TimeInterval) -> String {
+    let total = max(0, Int(seconds.rounded()))
+    if total >= 3_600 {
+        return String(format: "%d:%02d:%02d", total / 3_600, total % 3_600 / 60, total % 60)
+    }
+    return String(format: "%d:%02d", total / 60, total % 60)
 }
 
 private enum TrendCurve {

@@ -8,6 +8,7 @@ struct AnalyticsView: View {
     @AppStorage("RouteLatch.analytics.age") private var storedAge = 0
     @State private var range = AnalyticsRange.week
     @State private var editingAge = false
+    @State private var selectedZone: HeartRateZone?
 
     var body: some View {
         NavigationStack {
@@ -58,6 +59,9 @@ struct AnalyticsView: View {
         .onChange(of: tab) { _, newValue in
             guard newValue == .analytics else { return }
             Task { await health.refresh() }
+        }
+        .onChange(of: range) { _, _ in
+            selectedZone = nil
         }
         .sheet(isPresented: $editingAge) {
             HeartRateAgeSheet(storedAge: $storedAge)
@@ -206,9 +210,9 @@ struct AnalyticsView: View {
 
     private var distanceSamples: [TrendChartSample] {
         snapshot.buckets.enumerated().map { index, bucket in
-            TrendChartSample(
-                id: index,
-                label: bucket.label,
+            trendSample(
+                index: index,
+                bucket: bucket,
                 value: bucket.distanceMeters,
                 spoken: bucket.distanceMeters > 0 ? bucket.distanceMeters.formattedDistance : "No distance"
             )
@@ -221,13 +225,55 @@ struct AnalyticsView: View {
         return snapshot.buckets.enumerated().map { index, bucket in
             let bucketPace = bucket.paceSecondsPerKilometer
             let plotted = bucketPace.map { slowest - $0 + slowest * 0.2 }
-            return TrendChartSample(
-                id: index,
-                label: bucket.label,
+            return trendSample(
+                index: index,
+                bucket: bucket,
                 value: plotted,
                 spoken: bucketPace.map { self.pace($0) } ?? "No pace"
             )
         }
+    }
+
+    private func trendSample(index: Int, bucket: DistanceBucket, value: Double?, spoken: String) -> TrendChartSample {
+        let detail = bucketDetails(bucket, ending: bucketEnd(after: index))
+        return TrendChartSample(
+            id: index,
+            label: bucket.label,
+            title: detail.title,
+            value: value,
+            spoken: spoken,
+            rows: detail.rows
+        )
+    }
+
+    private func bucketEnd(after index: Int) -> Date {
+        if index + 1 < snapshot.buckets.count {
+            return snapshot.buckets[index + 1].start
+        }
+        return snapshot.windowEnd
+    }
+
+    private func bucketDetails(_ bucket: DistanceBucket, ending end: Date) -> (title: String, rows: [ChartDetailRow]) {
+        let matching = snapshot.activities.filter { $0.startedAt >= bucket.start && $0.startedAt < end }
+        var rows = [
+            ChartDetailRow(label: "Distance", value: bucket.distanceMeters > 0 ? bucket.distanceMeters.formattedDistance : "0 m"),
+            ChartDetailRow(label: "Time", value: clock(bucket.duration)),
+            ChartDetailRow(label: "Pace", value: pace(bucket.paceSecondsPerKilometer)),
+            ChartDetailRow(label: "Runs", value: "\(matching.count)")
+        ]
+        if matching.count == 1 {
+            rows.append(ChartDetailRow(label: "Run", value: matching[0].name))
+        }
+        let heartRates = matching.compactMap(\.averageHeartRate)
+        if !heartRates.isEmpty {
+            let average = heartRates.reduce(0, +) / Double(heartRates.count)
+            rows.append(ChartDetailRow(label: "Heart rate", value: "\(Int(average.rounded())) bpm"))
+        }
+        let climbs = matching.compactMap(\.elevationGainMeters)
+        if !climbs.isEmpty {
+            rows.append(ChartDetailRow(label: "Elevation", value: "\(Int(climbs.reduce(0, +).rounded())) m"))
+        }
+        return (bucket.spokenLabel, rows)
     }
 
     private var heartCard: some View {
@@ -242,7 +288,20 @@ struct AnalyticsView: View {
                 heartEmpty
             } else {
                 ForEach(snapshot.zones) { share in
-                    zoneRow(share)
+                    Button {
+                        selectedZone = selectedZone == share.zone ? nil : share.zone
+                    } label: {
+                        zoneRow(share)
+                            .padding(8)
+                            .background(
+                                selectedZone == share.zone ? LatchColor.accentSoft : Color.clear,
+                                in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+                if let selectedZone, let share = snapshot.zones.first(where: { $0.zone == selectedZone }) {
+                    ChartPointOverview(title: "\(share.zone.title) zone", rows: zoneDetails(share))
                 }
                 Text("Based on \(clock(snapshot.measuredHeartRate)) of heart-rate samples from \(originName(snapshot.heartRateOrigin)).")
                     .font(.caption)
@@ -649,11 +708,39 @@ struct AnalyticsView: View {
                         .frame(width: geo.size.width * share.fraction)
                 }
             }
+            .contentShape(Rectangle())
+            .gesture(
+                SpatialTapGesture()
+                    .onEnded { value in
+                        guard geo.size.width > 0, let zone = zone(at: value.location.x, width: geo.size.width) else { return }
+                        selectedZone = selectedZone == zone ? nil : zone
+                    }
+            )
         }
         .frame(height: 16)
         .background(LatchColor.chip)
         .clipShape(Capsule())
         .accessibilityHidden(true)
+    }
+
+    private func zone(at x: CGFloat, width: CGFloat) -> HeartRateZone? {
+        let fraction = min(1, max(0, x / width))
+        var cursor = 0.0
+        for share in snapshot.zones where share.fraction > 0 {
+            cursor += share.fraction
+            if fraction <= cursor {
+                return share.zone
+            }
+        }
+        return snapshot.zones.last { $0.fraction > 0 }?.zone
+    }
+
+    private func zoneDetails(_ share: HeartRateZoneShare) -> [ChartDetailRow] {
+        [
+            ChartDetailRow(label: "Time", value: clock(share.duration)),
+            ChartDetailRow(label: "Share", value: "\(Int((share.fraction * 100).rounded()))%"),
+            ChartDetailRow(label: "Range", value: bpmRange(share))
+        ]
     }
 
     private func yearSummary(_ grid: ActivityYearGrid) -> String {
