@@ -203,20 +203,20 @@ struct RunScreen: View {
                 Label(model.phase == .active ? "TRACKING RUN" : "WAITING FOR GPS", systemImage: model.phase == .active ? "location.fill" : "location.slash")
                     .foregroundStyle(LatchColor.accent)
             } else if model.isOffCourse {
-                Label("OFF COURSE", systemImage: "exclamationmark.triangle.fill").foregroundStyle(.red)
+                Label("OFF COURSE", systemImage: "exclamationmark.triangle.fill").foregroundStyle(LatchColor.danger)
             } else if model.isBehindPace {
                 Label("BEHIND GOAL", systemImage: "clock.badge.exclamationmark.fill").foregroundStyle(LatchColor.accent)
             } else {
                 Label("ON ROUTE", systemImage: "checkmark.circle.fill").foregroundStyle(LatchColor.accent)
             }
         }
-        .font(.headline)
+        .font(.title3.bold())
     }
 
     @ViewBuilder
     private var courseAlertBanner: some View {
         if model.isOffCourse {
-            alertCapsule("OFF COURSE", fill: .red, foreground: .white)
+            alertCapsule("OFF COURSE", fill: LatchColor.danger, foreground: LatchColor.onDanger)
         } else if model.isBehindPace {
             alertCapsule("BEHIND PACE", fill: LatchColor.accent, foreground: LatchColor.onAccent)
         }
@@ -224,7 +224,7 @@ struct RunScreen: View {
 
     private func alertCapsule(_ title: String, fill: Color, foreground: Color) -> some View {
         Text(title)
-            .font(.caption2.bold())
+            .font(.caption.bold())
             .foregroundStyle(foreground)
             .padding(.horizontal, 8)
             .padding(.vertical, 3)
@@ -317,8 +317,8 @@ struct RunScreen: View {
             runControlButton(
                 title: "Finish",
                 systemImage: "stop.fill",
-                fill: .red,
-                foreground: .white,
+                fill: LatchColor.danger,
+                foreground: LatchColor.onDanger,
                 accessibilityLabel: "Finish run"
             ) {
                 confirmingFinish = true
@@ -353,8 +353,8 @@ struct RunScreen: View {
 
     private var glanceView: some View {
         ViewThatFits(in: .vertical) {
-            glanceStack(timeSize: 44)
-            glanceStack(timeSize: 34)
+            glanceStack(timeSize: 50, distanceSize: 24, statSize: 22, labelSize: 12)
+            glanceStack(timeSize: 40, distanceSize: 22, statSize: 20, labelSize: 11)
         }
         .padding(.horizontal, 4)
         .padding(.bottom, 8)
@@ -365,10 +365,10 @@ struct RunScreen: View {
         .latchTabPage()
     }
 
-    private func glanceStack(timeSize: CGFloat) -> some View {
+    private func glanceStack(timeSize: CGFloat, distanceSize: CGFloat, statSize: CGFloat, labelSize: CGFloat) -> some View {
         VStack(spacing: 2) {
             Text(glanceStatus.title)
-                .font(.caption2.bold())
+                .font(.system(size: labelSize, weight: .bold))
                 .foregroundStyle(glanceStatus.color)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
@@ -377,17 +377,18 @@ struct RunScreen: View {
                 .monospacedDigit()
                 .foregroundStyle(LatchColor.ink)
                 .lineLimit(1)
-                .minimumScaleFactor(0.5)
+                .minimumScaleFactor(0.65)
             Text(watchDistance(model.actualDistance))
-                .font(.title3.bold().monospacedDigit())
+                .font(.system(size: distanceSize, weight: .bold, design: .rounded))
+                .monospacedDigit()
                 .foregroundStyle(LatchColor.accent)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
             VStack(spacing: 1) {
                 if model.targetPaceSecondsPerKilometer != nil {
-                    paceComparison
+                    paceComparison(statSize: statSize, labelSize: labelSize)
                 }
-                secondaryMetrics
+                secondaryMetrics(statSize: statSize, labelSize: labelSize)
             }
             .padding(.vertical, 4)
             .padding(.horizontal, 2)
@@ -395,52 +396,61 @@ struct RunScreen: View {
         }
     }
 
-    private var paceComparison: some View {
+    private func paceComparison(statSize: CGFloat, labelSize: CGFloat) -> some View {
         HStack(spacing: 6) {
             if let pace = model.paceProgress {
                 glanceStat(
                     title: paceCaption(pace.scheduleDelta),
                     value: signedSchedule(pace.scheduleDelta),
-                    color: paceTone(pace.scheduleDelta)
+                    color: paceTone(pace.scheduleDelta),
+                    statSize: statSize,
+                    labelSize: labelSize
                 )
                 glanceStat(
                     title: planCaption,
                     value: watchPercent(pace.adherencePercent),
-                    color: paceTone(pace.scheduleDelta)
+                    color: paceTone(pace.scheduleDelta),
+                    statSize: statSize,
+                    labelSize: labelSize
                 )
             } else {
-                glanceStat(title: "BEHIND", value: "—", color: LatchColor.ink)
-                glanceStat(title: planCaption, value: "—", color: LatchColor.ink)
+                glanceStat(title: "BEHIND", value: "—", color: LatchColor.ink, statSize: statSize, labelSize: labelSize)
+                glanceStat(title: planCaption, value: "—", color: LatchColor.ink, statSize: statSize, labelSize: labelSize)
             }
         }
     }
 
-    private var secondaryMetrics: some View {
+    private func secondaryMetrics(statSize: CGFloat, labelSize: CGFloat) -> some View {
         HStack(spacing: 6) {
             glanceStat(
                 title: "AVG /KM",
                 value: model.averagePace.map { watchPaceMinutes($0) } ?? "—",
-                color: LatchColor.ink
+                color: LatchColor.ink,
+                statSize: statSize,
+                labelSize: labelSize
             )
             if let heartRate = model.heartRate {
                 glanceStat(
                     title: "BPM",
                     value: String(format: "%.0f", heartRate),
-                    color: .red
+                    color: LatchColor.danger,
+                    statSize: statSize,
+                    labelSize: labelSize
                 )
             }
         }
     }
 
-    private func glanceStat(title: String, value: String, color: Color) -> some View {
+    private func glanceStat(title: String, value: String, color: Color, statSize: CGFloat, labelSize: CGFloat) -> some View {
         VStack(spacing: 0) {
             Text(value)
-                .font(.title3.bold().monospacedDigit())
+                .font(.system(size: statSize, weight: .bold, design: .rounded))
+                .monospacedDigit()
                 .foregroundStyle(color)
                 .lineLimit(1)
-                .minimumScaleFactor(0.5)
+                .minimumScaleFactor(0.7)
             Text(title)
-                .font(.system(size: 10, weight: .semibold))
+                .font(.system(size: labelSize, weight: .semibold))
                 .foregroundStyle(LatchColor.muted)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
@@ -450,13 +460,13 @@ struct RunScreen: View {
 
     private var glanceStatus: (title: String, color: Color) {
         if model.phase == .paused, model.isOffCourse {
-            return ("PAUSED · OFF COURSE", .red)
+            return ("PAUSED · OFF COURSE", LatchColor.danger)
         }
         if model.phase == .paused {
             return ("PAUSED", LatchColor.accent)
         }
         if model.isOffCourse {
-            return ("OFF COURSE", .red)
+            return ("OFF COURSE", LatchColor.danger)
         }
         guard let pace = model.paceProgress else {
             return ("RUNNING", LatchColor.accent)
@@ -497,7 +507,7 @@ struct RunScreen: View {
             VStack(spacing: 7) {
                 if let summary = model.summary {
                     Label(summary.workoutSaved ? "Run Saved" : "Run Ended", systemImage: summary.workoutSaved ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                        .foregroundStyle(summary.workoutSaved ? LatchColor.accent : .red)
+                        .foregroundStyle(summary.workoutSaved ? LatchColor.accent : LatchColor.danger)
                     metric("Elapsed", Duration.seconds(summary.elapsed).formatted(.time(pattern: .minuteSecond)))
                     metric("Distance", watchDistance(summary.actualDistance))
                     metric("Average pace", summary.averagePace.map(watchPace) ?? "—")
@@ -524,12 +534,19 @@ struct RunScreen: View {
     }
 
     private func metric(_ title: String, _ value: String) -> some View {
-        HStack {
-            Text(title).foregroundStyle(LatchColor.muted)
-            Spacer()
-            Text(value).font(.headline.monospacedDigit()).foregroundStyle(LatchColor.ink)
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(title)
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(LatchColor.muted)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+            Spacer(minLength: 6)
+            Text(value)
+                .font(.title3.bold().monospacedDigit())
+                .foregroundStyle(LatchColor.ink)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
         }
-        .font(.caption)
     }
 
     private func scheduleText(_ delta: TimeInterval) -> String {

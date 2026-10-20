@@ -9,6 +9,8 @@ enum LatchColor {
     static let onAccent = Color("LatchOnAccent")
     static let accentSoft = Color("LatchAccentSoft")
     static let chip = Color("LatchChip")
+    static let danger = Color("LatchDanger")
+    static let onDanger = Color("LatchOnDanger")
 }
 
 struct LatchIconBadge: View {
