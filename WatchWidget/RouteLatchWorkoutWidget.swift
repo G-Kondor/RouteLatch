@@ -76,8 +76,8 @@ private struct WorkoutWidgetView: View {
                         Spacer(minLength: 4)
                         Label(paceText, systemImage: "speedometer")
                     }
-                    .font(.caption2.monospacedDigit())
-                    .foregroundStyle(WidgetLatch.muted)
+                    .font(.caption.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(WidgetLatch.ink)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 controlButtons

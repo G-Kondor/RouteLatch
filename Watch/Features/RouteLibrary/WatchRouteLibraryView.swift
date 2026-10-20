@@ -275,7 +275,7 @@ struct WatchRouteDetailView: View {
                             .font(.caption.bold())
                     }
                 }
-                .buttonStyle(WatchRunButtonStyle(fill: .red, foreground: .white))
+                .buttonStyle(WatchRunButtonStyle(fill: LatchColor.danger, foreground: LatchColor.onDanger))
                 .frame(maxWidth: .infinity)
                 .frame(height: deleteHeight)
                 .accessibilityLabel("Delete Watch Copy")
