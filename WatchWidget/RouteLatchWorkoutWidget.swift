@@ -67,17 +67,22 @@ private struct WorkoutWidgetView: View {
                     HStack(spacing: 4) {
                         Image(systemName: entry.snapshot.phase == .paused ? "pause.circle.fill" : "figure.run")
                             .foregroundStyle(WidgetLatch.accent)
-                        elapsedText
-                            .font(.headline.monospacedDigit())
-                            .foregroundStyle(WidgetLatch.ink)
+                        Text(distanceText)
+                            .font(.headline.weight(.bold).monospacedDigit())
+                            .foregroundStyle(WidgetLatch.accent)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
                     }
-                    HStack {
-                        Label(distanceText, systemImage: "arrow.trianglehead.swap")
+                    HStack(spacing: 4) {
+                        elapsedText
+                            .lineLimit(1)
                         Spacer(minLength: 4)
                         Label(paceText, systemImage: "speedometer")
+                            .lineLimit(1)
                     }
-                    .font(.caption.weight(.semibold).monospacedDigit())
+                    .font(.caption2.weight(.semibold).monospacedDigit())
                     .foregroundStyle(WidgetLatch.ink)
+                    .minimumScaleFactor(0.7)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 controlButtons

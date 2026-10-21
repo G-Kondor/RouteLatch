@@ -192,6 +192,41 @@ final class RouteGeometryTests: XCTestCase {
         XCTAssertEqual(tracker.distance, 0)
     }
 
+    func testKilometerClosureSignalsEachCompletedKilometerOnce() {
+        var state = KilometerClosureState()
+        XCTAssertEqual(state.update(distanceMeters: 0, elapsed: 0), .none)
+        XCTAssertEqual(state.update(distanceMeters: 999, elapsed: 300), .none)
+        XCTAssertEqual(
+            state.update(distanceMeters: 1_000, elapsed: 301),
+            .closed(.init(index: 1, splitDuration: 301))
+        )
+        XCTAssertEqual(state.update(distanceMeters: 1_000, elapsed: 302), .none)
+        XCTAssertEqual(state.update(distanceMeters: 1_999.9, elapsed: 590), .none)
+        XCTAssertEqual(
+            state.update(distanceMeters: 2_000, elapsed: 600),
+            .closed(.init(index: 2, splitDuration: 299))
+        )
+        XCTAssertEqual(state.closedCount, 2)
+        XCTAssertEqual(state.update(distanceMeters: 1_500, elapsed: 700), .none)
+        XCTAssertEqual(state.closedCount, 2)
+    }
+
+    func testKilometerClosureAveragesAMultiKilometerJumpAndIgnoresInvalidSamples() {
+        var state = KilometerClosureState()
+        XCTAssertEqual(
+            state.update(distanceMeters: 2_500, elapsed: 800),
+            .closed(.init(index: 2, splitDuration: 400))
+        )
+        XCTAssertEqual(state.update(distanceMeters: .nan, elapsed: 900), .none)
+        XCTAssertEqual(state.update(distanceMeters: 3_000, elapsed: -1), .none)
+        XCTAssertEqual(state.update(distanceMeters: .infinity, elapsed: 900), .none)
+        XCTAssertEqual(state.closedCount, 2)
+        XCTAssertEqual(
+            state.update(distanceMeters: 3_000, elapsed: 900),
+            .closed(.init(index: 3, splitDuration: 100))
+        )
+    }
+
     func testRunDistanceResetClearsPreviousSample() {
         var tracker = RunDistanceAccumulator()
         let start = Date(timeIntervalSince1970: 3_000)

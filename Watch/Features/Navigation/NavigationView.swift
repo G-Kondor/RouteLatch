@@ -91,6 +91,10 @@ struct RunScreen: View {
                 break
             }
         }
+        .onChange(of: model.kilometerSign) { _, sign in
+            guard let sign else { return }
+            AccessibilityNotification.Announcement("Kilometer \(sign.index) closed, split \(watchDuration(sign.splitDuration))").post()
+        }
     }
 
     private var hidesRunChrome: Bool {
@@ -153,8 +157,11 @@ struct RunScreen: View {
             }
         }
         .overlay(alignment: .top) {
-            courseAlertBanner
-                .padding(.top, 4)
+            VStack(spacing: 4) {
+                kilometerSignBanner
+                courseAlertBanner
+            }
+            .padding(.top, 4)
         }
         .latchTabPage()
         .onChange(of: model.location?.timestamp) { _, _ in
@@ -169,8 +176,8 @@ struct RunScreen: View {
         ScrollView {
             VStack(spacing: 7) {
                 status
-                metric("Distance", watchDistance(model.actualDistance))
-                metric("Elapsed", Duration.seconds(model.elapsed).formatted(.time(pattern: .minuteSecond)))
+                metric("Distance", watchDistance(model.actualDistance), valueFont: .title2.bold().monospacedDigit())
+                metric("Elapsed", Duration.seconds(model.elapsed).formatted(.time(pattern: .minuteSecond)), valueFont: .body.bold().monospacedDigit())
                 metric("Average pace", model.averagePace.map(watchPace) ?? "—")
                 if let route = model.route {
                     metric("Route progress", String(format: "%.0f%%", (model.match?.progress ?? 0) * 100))
@@ -192,7 +199,10 @@ struct RunScreen: View {
             .padding(.horizontal, 2)
         }
         .overlay(alignment: .top) {
-            courseAlertBanner
+            VStack(spacing: 4) {
+                kilometerSignBanner
+                courseAlertBanner
+            }
         }
         .latchTabPage()
     }
@@ -327,6 +337,10 @@ struct RunScreen: View {
         .padding(.horizontal, 2)
         .padding(.bottom, 8)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .overlay(alignment: .top) {
+            kilometerSignBanner
+                .padding(.top, 2)
+        }
         .latchTabPage()
     }
 
@@ -353,8 +367,8 @@ struct RunScreen: View {
 
     private var glanceView: some View {
         ViewThatFits(in: .vertical) {
-            glanceStack(timeSize: 50, distanceSize: 24, statSize: 22, labelSize: 12)
-            glanceStack(timeSize: 40, distanceSize: 22, statSize: 20, labelSize: 11)
+            glanceStack(timeSize: 26, distanceSize: 42, statSize: 22, labelSize: 12)
+            glanceStack(timeSize: 20, distanceSize: 34, statSize: 20, labelSize: 11)
         }
         .padding(.horizontal, 4)
         .padding(.bottom, 8)
@@ -372,18 +386,16 @@ struct RunScreen: View {
                 .foregroundStyle(glanceStatus.color)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
+            if let sign = model.kilometerSign {
+                kilometerSignBadge(sign, numberSize: labelSize + 4)
+            }
             Text(watchDuration(model.elapsed))
-                .font(.system(size: timeSize, weight: .bold, design: .rounded))
+                .font(.system(size: timeSize, weight: .semibold, design: .rounded))
                 .monospacedDigit()
                 .foregroundStyle(LatchColor.ink)
                 .lineLimit(1)
-                .minimumScaleFactor(0.65)
-            Text(watchDistance(model.actualDistance))
-                .font(.system(size: distanceSize, weight: .bold, design: .rounded))
-                .monospacedDigit()
-                .foregroundStyle(LatchColor.accent)
-                .lineLimit(1)
                 .minimumScaleFactor(0.7)
+            distanceReadout(numberSize: distanceSize)
             VStack(spacing: 1) {
                 if model.targetPaceSecondsPerKilometer != nil {
                     paceComparison(statSize: statSize, labelSize: labelSize)
@@ -394,6 +406,35 @@ struct RunScreen: View {
             .padding(.horizontal, 2)
             .background(LatchColor.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
+        .animation(.easeOut(duration: 0.2), value: model.kilometerSign)
+    }
+
+    @ViewBuilder
+    private var kilometerSignBanner: some View {
+        if let sign = model.kilometerSign {
+            kilometerSignBadge(sign, numberSize: 15)
+        }
+    }
+
+    private func kilometerSignBadge(_ sign: KilometerClosure, numberSize: CGFloat) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: "flag.fill")
+                .font(.system(size: max(11, numberSize - 3), weight: .bold))
+            Text("KM \(sign.index)")
+                .font(.system(size: numberSize, weight: .bold, design: .rounded))
+            Text(watchDuration(sign.splitDuration))
+                .font(.system(size: max(11, numberSize - 2), weight: .semibold, design: .rounded))
+                .monospacedDigit()
+        }
+        .foregroundStyle(LatchColor.onAccent)
+        .lineLimit(1)
+        .minimumScaleFactor(0.7)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3)
+        .background(LatchColor.accent, in: Capsule())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Kilometer \(sign.index) closed")
+        .accessibilityValue("Split \(watchDuration(sign.splitDuration))")
     }
 
     private func paceComparison(statSize: CGFloat, labelSize: CGFloat) -> some View {
@@ -479,9 +520,12 @@ struct RunScreen: View {
     private var glanceAccessibilityLabel: String {
         var parts = [
             glanceStatus.title,
-            "Elapsed \(watchDuration(model.elapsed))",
-            "Distance \(watchDistance(model.actualDistance))"
+            "Distance \(watchDistance(model.actualDistance))",
+            "Elapsed \(watchDuration(model.elapsed))"
         ]
+        if let sign = model.kilometerSign {
+            parts.append("Kilometer \(sign.index) closed, split \(watchDuration(sign.splitDuration))")
+        }
         if let pace = model.paceProgress {
             parts.append(scheduleText(pace.scheduleDelta))
             parts.append("\(watchPercent(pace.adherencePercent)) of planned pace")
@@ -508,8 +552,8 @@ struct RunScreen: View {
                 if let summary = model.summary {
                     Label(summary.workoutSaved ? "Run Saved" : "Run Ended", systemImage: summary.workoutSaved ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
                         .foregroundStyle(summary.workoutSaved ? LatchColor.accent : LatchColor.danger)
-                    metric("Elapsed", Duration.seconds(summary.elapsed).formatted(.time(pattern: .minuteSecond)))
-                    metric("Distance", watchDistance(summary.actualDistance))
+                    metric("Elapsed", Duration.seconds(summary.elapsed).formatted(.time(pattern: .minuteSecond)), valueFont: .body.bold().monospacedDigit())
+                    metric("Distance", watchDistance(summary.actualDistance), valueFont: .title2.bold().monospacedDigit())
                     metric("Average pace", summary.averagePace.map(watchPace) ?? "—")
                     if let pace = summary.paceProgress {
                         metric("Schedule", scheduleText(pace.scheduleDelta))
@@ -533,7 +577,30 @@ struct RunScreen: View {
         .latchTabPage()
     }
 
-    private func metric(_ title: String, _ value: String) -> some View {
+    private func distanceReadout(numberSize: CGFloat) -> some View {
+        let readout = distanceParts(model.actualDistance)
+        return HStack(alignment: .firstTextBaseline, spacing: 3) {
+            Text(readout.value)
+                .font(.system(size: numberSize, weight: .bold, design: .rounded))
+                .monospacedDigit()
+            Text(readout.unit)
+                .font(.system(size: max(16, numberSize * 0.46), weight: .bold, design: .rounded))
+        }
+        .foregroundStyle(LatchColor.accent)
+        .lineLimit(1)
+        .minimumScaleFactor(0.6)
+        .accessibilityLabel("Distance \(watchDistance(model.actualDistance))")
+    }
+
+    private func distanceParts(_ meters: Double) -> (value: String, unit: String) {
+        guard meters.isFinite, meters >= 1_000 else {
+            let whole = meters.isFinite ? max(0, meters) : 0
+            return (String(format: "%.0f", whole), "m")
+        }
+        return (String(format: "%.1f", meters / 1_000), "km")
+    }
+
+    private func metric(_ title: String, _ value: String, valueFont: Font = .title3.bold().monospacedDigit()) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Text(title)
                 .font(.footnote.weight(.semibold))
@@ -542,7 +609,7 @@ struct RunScreen: View {
                 .minimumScaleFactor(0.8)
             Spacer(minLength: 6)
             Text(value)
-                .font(.title3.bold().monospacedDigit())
+                .font(valueFont)
                 .foregroundStyle(LatchColor.ink)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
