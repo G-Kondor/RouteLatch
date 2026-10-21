@@ -9,6 +9,7 @@ final class WatchRouteLibraryModel: ObservableObject {
     @Published private(set) var routes: [Route] = []
     @Published private(set) var isLoadingRoutes = true
     @Published private(set) var freeRunTargetPaceSecondsPerKilometer: Double?
+    @Published private(set) var phoneResolvedAppearance: ResolvedAppearance?
     @Published var errorMessage: String?
     let store: RouteFileStore
     let runStore: RecordedRunFileStore
@@ -20,9 +21,16 @@ final class WatchRouteLibraryModel: ObservableObject {
         runStore = RecordedRunFileStore(directory: support.appendingPathComponent("RouteLatch/PendingRuns", isDirectory: true))
         let storedPace = (UserDefaults.standard.object(forKey: Self.freeRunTargetPaceKey) as? NSNumber)?.doubleValue
         freeRunTargetPaceSecondsPerKilometer = storedPace.flatMap { PaceGoalConfiguration.isValid($0) ? $0 : nil }
+        phoneResolvedAppearance = ResolvedAppearance(rawValue: WorkoutWidgetStore.readResolvedAppearance() ?? "")
         connectivity = WatchConnectivityManager(store: store, runStore: runStore)
         connectivity.onRouteReceived = { [weak self] in self?.reload() }
         connectivity.onTransferError = { [weak self] message in self?.errorMessage = "A route could not be received: \(message)" }
+        connectivity.onAppearanceReceived = { [weak self] snapshot in
+            self?.phoneResolvedAppearance = snapshot.resolved
+        }
+        if let appearance = connectivity.appearance {
+            phoneResolvedAppearance = appearance.resolved
+        }
         Task { [weak self] in
             await self?.loadInitialRoutes()
         }

@@ -31,6 +31,7 @@ final class PhoneConnectivityManager: NSObject, ObservableObject {
     private let runStore: RecordedRunFileStore
     private var pendingRoutes: [UUID: Route] = [:]
     private var preparingRouteIDs: Set<UUID> = []
+    private var pendingAppearance: [String: String]?
 
     init(runStore: RecordedRunFileStore) {
         self.runStore = runStore
@@ -107,6 +108,32 @@ final class PhoneConnectivityManager: NSObject, ObservableObject {
         guard session.activationState == .activated else { return }
         let routes = Array(pendingRoutes.values)
         for route in routes { transferPendingRoute(route, using: session) }
+        pushAppearance(using: session)
+    }
+
+    func syncAppearance(preference: AppAppearance, resolved: ResolvedAppearance) {
+        pendingAppearance = AppearanceSync.payload(preference: preference, resolved: resolved)
+        guard let session else { return }
+        guard session.activationState == .activated else {
+            session.activate()
+            return
+        }
+        pushAppearance(using: session)
+    }
+
+    private func pushAppearance(using session: WCSession) {
+        guard let pendingAppearance else { return }
+        guard session.isPaired, session.isWatchAppInstalled else { return }
+        let current = session.applicationContext
+        let unchanged = pendingAppearance.allSatisfy { current[$0.key] as? String == $0.value }
+        guard !unchanged else { return }
+        var context = current
+        for (key, value) in pendingAppearance { context[key] = value }
+        do {
+            try session.updateApplicationContext(context)
+        } catch {
+            phoneConnectivityLogger.error("Could not send appearance to Apple Watch: \(error.localizedDescription, privacy: .public)")
+        }
     }
 }
 

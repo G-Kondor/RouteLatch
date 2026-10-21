@@ -46,6 +46,7 @@ enum WorkoutWidgetStore {
 
     private static let snapshotKey = "workout-widget.snapshot"
     private static let commandKey = "workout-widget.command"
+    private static let resolvedAppearanceKey = "RouteLatch.appearanceResolved"
 
     private static var defaults: UserDefaults {
         UserDefaults(suiteName: suiteName) ?? .standard
@@ -83,5 +84,13 @@ enum WorkoutWidgetStore {
 
     static func discardPendingCommand() {
         defaults.removeObject(forKey: commandKey)
+    }
+
+    static func readResolvedAppearance() -> String? {
+        defaults.string(forKey: resolvedAppearanceKey)
+    }
+
+    static func writeResolvedAppearance(_ rawValue: String) {
+        defaults.set(rawValue, forKey: resolvedAppearanceKey)
     }
 }

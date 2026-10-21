@@ -1,4 +1,5 @@
 import Combine
+import RouteLatchCore
 import SwiftUI
 
 /// Keeps the in-progress run alive if the navigation stack drops the run screen.
@@ -81,6 +82,18 @@ struct RouteLatchWatchApp: App {
             }
             .environmentObject(anchor)
             .tint(LatchColor.accent)
+            .preferredColorScheme(colorScheme(for: model.phoneResolvedAppearance))
         }
+    }
+}
+
+private func colorScheme(for appearance: ResolvedAppearance?) -> ColorScheme? {
+    switch appearance {
+    case .light:
+        .light
+    case .dark:
+        .dark
+    case nil:
+        nil
     }
 }

@@ -1,15 +1,7 @@
+import RouteLatchCore
 import SwiftUI
 
-/// Phone-wide appearance. `system` clears the override so iOS follows the device setting.
-enum PhoneAppearance: String, CaseIterable, Identifiable {
-    case system
-    case light
-    case dark
-
-    static let storageKey = "RouteLatch.appearance"
-
-    var id: String { rawValue }
-
+extension AppAppearance {
     var title: String {
         switch self {
         case .system: "System"
@@ -18,16 +10,13 @@ enum PhoneAppearance: String, CaseIterable, Identifiable {
         }
     }
 
+    /// `system` leaves the override unset so the phone follows its own setting.
     var colorScheme: ColorScheme? {
         switch self {
         case .system: nil
         case .light: .light
         case .dark: .dark
         }
-    }
-
-    static func stored(_ rawValue: String) -> PhoneAppearance {
-        PhoneAppearance(rawValue: rawValue) ?? .system
     }
 }
 

@@ -13,7 +13,6 @@ struct RouteLatchWorkoutWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: WorkoutWidgetStore.widgetKind, provider: WorkoutTimelineProvider()) { entry in
             WorkoutWidgetView(entry: entry)
-                .containerBackground(WidgetLatch.canvas, for: .widget)
         }
         .configurationDisplayName("Live Run")
         .description("See your run and control the active workout.")
@@ -49,15 +48,23 @@ private struct WorkoutTimelineProvider: TimelineProvider {
 }
 
 private struct WorkoutWidgetView: View {
+    @Environment(\.colorScheme) private var colorScheme
     let entry: WorkoutEntry
 
     var body: some View {
+        let palette = WidgetPalette.current(colorScheme: colorScheme)
+        return content(palette)
+            .containerBackground(palette.canvas, for: .widget)
+    }
+
+    @ViewBuilder
+    private func content(_ palette: WidgetPalette) -> some View {
         if entry.snapshot.phase == .inactive {
             HStack {
-                Image(systemName: "figure.run.circle.fill").foregroundStyle(WidgetLatch.accent)
+                Image(systemName: "figure.run.circle.fill").foregroundStyle(palette.accent)
                 VStack(alignment: .leading) {
-                    Text("RouteLatch").font(.headline).foregroundStyle(WidgetLatch.ink)
-                    Text("No active run").font(.caption2).foregroundStyle(WidgetLatch.muted)
+                    Text("RouteLatch").font(.headline).foregroundStyle(palette.ink)
+                    Text("No active run").font(.caption2).foregroundStyle(palette.muted)
                 }
             }
             .widgetURL(URL(string: "routelatch://run"))
@@ -66,10 +73,10 @@ private struct WorkoutWidgetView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 4) {
                         Image(systemName: entry.snapshot.phase == .paused ? "pause.circle.fill" : "figure.run")
-                            .foregroundStyle(WidgetLatch.accent)
+                            .foregroundStyle(palette.accent)
                         Text(distanceText)
                             .font(.headline.weight(.bold).monospacedDigit())
-                            .foregroundStyle(WidgetLatch.accent)
+                            .foregroundStyle(palette.accent)
                             .lineLimit(1)
                             .minimumScaleFactor(0.7)
                     }
@@ -81,11 +88,11 @@ private struct WorkoutWidgetView: View {
                             .lineLimit(1)
                     }
                     .font(.caption2.weight(.semibold).monospacedDigit())
-                    .foregroundStyle(WidgetLatch.ink)
+                    .foregroundStyle(palette.ink)
                     .minimumScaleFactor(0.7)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                controlButtons
+                controlButtons(palette)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .widgetURL(URL(string: "routelatch://workout"))
@@ -101,7 +108,7 @@ private struct WorkoutWidgetView: View {
         }
     }
 
-    private var controlButtons: some View {
+    private func controlButtons(_ palette: WidgetPalette) -> some View {
         HStack(spacing: 4) {
             if entry.snapshot.phase == .active {
                 Button(intent: WorkoutCommandIntent(command: .pause)) {
@@ -109,7 +116,7 @@ private struct WorkoutWidgetView: View {
                         .font(.title2)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
-                .tint(WidgetLatch.accent)
+                .tint(palette.accent)
                 .accessibilityLabel("Pause run")
             } else if entry.snapshot.phase == .paused {
                 Button(intent: WorkoutCommandIntent(command: .resume)) {
@@ -117,7 +124,7 @@ private struct WorkoutWidgetView: View {
                         .font(.title2)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
-                .tint(WidgetLatch.accent)
+                .tint(palette.accent)
                 .accessibilityLabel("Resume run")
             }
             Button(intent: WorkoutCommandIntent(command: .finish)) {
@@ -152,11 +159,43 @@ private struct WorkoutWidgetView: View {
     }
 }
 
-private enum WidgetLatch {
-    static let canvas = Color(red: 0.102, green: 0.078, blue: 0.071)
-    static let ink = Color(red: 0.969, green: 0.941, blue: 0.910)
-    static let muted = Color(red: 0.780, green: 0.722, blue: 0.675)
-    static let accent = Color(red: 1.000, green: 0.545, blue: 0.247)
+private struct WidgetPalette {
+    let canvas: Color
+    let ink: Color
+    let muted: Color
+    let accent: Color
+
+    static let light = WidgetPalette(
+        canvas: Color(red: 0.973, green: 0.929, blue: 0.894),
+        ink: Color(red: 0.110, green: 0.090, blue: 0.078),
+        muted: Color(red: 0.345, green: 0.305, blue: 0.275),
+        accent: Color(red: 0.640, green: 0.320, blue: 0.069)
+    )
+
+    static let dark = WidgetPalette(
+        canvas: Color(red: 0.102, green: 0.078, blue: 0.071),
+        ink: Color(red: 0.969, green: 0.941, blue: 0.910),
+        muted: Color(red: 0.780, green: 0.722, blue: 0.675),
+        accent: Color(red: 1.000, green: 0.545, blue: 0.247)
+    )
+
+    static func current(colorScheme: ColorScheme) -> WidgetPalette {
+        switch WorkoutWidgetStore.readResolvedAppearance() {
+        case "light":
+            return .light
+        case "dark":
+            return .dark
+        default:
+            switch colorScheme {
+            case .dark:
+                return .dark
+            case .light:
+                return .light
+            @unknown default:
+                return .dark
+            }
+        }
+    }
 }
 
 private enum WorkoutWidgetAction: String, AppEnum {
