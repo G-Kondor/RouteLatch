@@ -43,6 +43,8 @@ final class RouteNavigationModel: NSObject, ObservableObject {
     @Published private(set) var isBehindPace = false
     @Published private(set) var actualDistance = 0.0
     @Published private(set) var routeDistanceCompleted = 0.0
+    /// Shown briefly after the runner closes a whole kilometer.
+    @Published private(set) var kilometerSign: KilometerClosure?
     @Published private(set) var summary: Summary?
     @Published private(set) var startStage: StartStage?
     @Published var errorMessage: String?
@@ -53,6 +55,8 @@ final class RouteNavigationModel: NSObject, ObservableObject {
     private var matcher: RouteMatcher?
     private var alertState = OffCourseAlertState()
     private var paceAlertState = PaceAlertState()
+    private var kilometerClosure = KilometerClosureState()
+    private var kilometerSignDismissTask: Task<Void, Never>?
     private var guidanceStartDistanceAlong: Double?
     private var didSignalFinish = false
     private nonisolated(unsafe) var timer: Timer?
@@ -79,7 +83,9 @@ final class RouteNavigationModel: NSObject, ObservableObject {
         workout.$distance.sink { [weak self] distance in
             guard let self else { return }
             actualDistance = distance
-            if phase == .active || phase == .paused { refreshPaceStatus(playHaptics: false) }
+            guard phase == .active || phase == .paused else { return }
+            refreshPaceStatus(playHaptics: false)
+            refreshKilometerClosure()
         }.store(in: &workoutCancellables)
         workout.$errorMessage.compactMap { $0 }.sink { [weak self] in self?.errorMessage = $0 }.store(in: &workoutCancellables)
     }
@@ -150,6 +156,9 @@ final class RouteNavigationModel: NSObject, ObservableObject {
                 paceProgress = nil
                 isBehindPace = false
                 paceAlertState = PaceAlertState()
+                kilometerClosure = KilometerClosureState()
+                kilometerSign = nil
+                kilometerSignDismissTask?.cancel()
                 clearStartAttempt()
                 phase = .active
                 publishWidgetSnapshot(forceReload: true)
@@ -212,6 +221,7 @@ final class RouteNavigationModel: NSObject, ObservableObject {
         phase = .active
         locationManager.startUpdatingLocation()
         workout.resume()
+        refreshKilometerClosure()
         publishWidgetSnapshot(forceReload: true)
     }
 
@@ -283,7 +293,31 @@ final class RouteNavigationModel: NSObject, ObservableObject {
         guard phase == .active || phase == .paused else { return }
         elapsed = accumulatedElapsed + (activePeriodStartedAt.map { Date().timeIntervalSince($0) } ?? 0)
         refreshPaceStatus(playHaptics: playPaceHaptics)
+        refreshKilometerClosure()
         publishWidgetSnapshot()
+    }
+
+    private func refreshKilometerClosure() {
+        guard phase == .active else { return }
+        let event = kilometerClosure.update(distanceMeters: actualDistance, elapsed: elapsed)
+        switch event {
+        case .closed(let closure):
+            showKilometerSign(closure)
+        case .none:
+            break
+        }
+    }
+
+    private func showKilometerSign(_ closure: KilometerClosure) {
+        kilometerSign = closure
+        WKInterfaceDevice.current().play(.success)
+        kilometerSignDismissTask?.cancel()
+        let index = closure.index
+        kilometerSignDismissTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(8))
+            guard !Task.isCancelled, let self, self.kilometerSign?.index == index else { return }
+            self.kilometerSign = nil
+        }
     }
 
     private func refreshPaceStatus(playHaptics: Bool) {
@@ -381,6 +415,7 @@ final class RouteNavigationModel: NSObject, ObservableObject {
         timer?.invalidate()
         startTask?.cancel()
         startTimeoutTask?.cancel()
+        kilometerSignDismissTask?.cancel()
     }
 }
 

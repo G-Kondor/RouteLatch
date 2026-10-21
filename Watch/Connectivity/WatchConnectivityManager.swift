@@ -2,6 +2,7 @@ import Foundation
 import OSLog
 import RouteLatchCore
 import WatchConnectivity
+import WidgetKit
 
 private let watchConnectivityLogger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "RouteLatch", category: "WatchConnectivity")
 
@@ -10,6 +11,8 @@ final class WatchConnectivityManager: NSObject {
     private static weak var shared: WatchConnectivityManager?
     var onRouteReceived: (() -> Void)?
     var onTransferError: ((String) -> Void)?
+    var onAppearanceReceived: ((AppearanceSnapshot) -> Void)?
+    private(set) var appearance: AppearanceSnapshot?
     private let store: RouteFileStore
     private let runStore: RecordedRunFileStore
     private var transferringRunIDs: Set<UUID> = []
@@ -52,10 +55,26 @@ private enum WatchConnectivityError: Error, LocalizedError {
 
 extension WatchConnectivityManager: WCSessionDelegate {
     nonisolated func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: Error?) {
+        let snapshot = AppearanceSync.snapshot(from: session.receivedApplicationContext)
         Task { @MainActor [weak self] in
             if let error { self?.onTransferError?(error.localizedDescription) }
             else { self?.transferPendingRuns(using: .default) }
+            if let snapshot { self?.publishAppearance(snapshot) }
         }
+    }
+
+    nonisolated func session(_ session: WCSession, didReceiveApplicationContext applicationContext: [String: Any]) {
+        guard let snapshot = AppearanceSync.snapshot(from: applicationContext) else { return }
+        Task { @MainActor [weak self] in
+            self?.publishAppearance(snapshot)
+        }
+    }
+
+    private func publishAppearance(_ snapshot: AppearanceSnapshot) {
+        appearance = snapshot
+        WorkoutWidgetStore.writeResolvedAppearance(snapshot.resolved.rawValue)
+        WidgetCenter.shared.reloadTimelines(ofKind: WorkoutWidgetStore.widgetKind)
+        onAppearanceReceived?(snapshot)
     }
     nonisolated func session(_ session: WCSession, didReceive file: WCSessionFile) {
         do {

@@ -57,6 +57,10 @@ final class PhoneRouteLibraryModel: ObservableObject {
         storageWarning = result.issues.isEmpty ? nil : "Skipped \(result.issues.count) damaged route file(s)."
     }
 
+    func syncWatchAppearance(preference: AppAppearance, resolved: ResolvedAppearance) {
+        connectivity.syncAppearance(preference: preference, resolved: resolved)
+    }
+
     func handleIncomingURL(_ url: URL) {
         if !strava.handleIncomingURL(url) { importRoute(from: url) }
     }

@@ -35,9 +35,11 @@ enum PhoneTab: String, CaseIterable, Identifiable {
 struct PhoneShellView: View {
     @ObservedObject var model: PhoneRouteLibraryModel
     @StateObject private var health = RunningHealthStore()
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.scenePhase) private var scenePhase
     @State private var tab = PhoneTab.home
     @State private var importing = false
-    @AppStorage(PhoneAppearance.storageKey) private var appearanceRaw = PhoneAppearance.system.rawValue
+    @AppStorage(AppAppearance.storageKey) private var appearanceRaw = AppAppearance.system.rawValue
 
     var body: some View {
         ZStack {
@@ -72,7 +74,30 @@ struct PhoneShellView: View {
         } message: {
             Text(model.strava.errorMessage ?? "Unknown error")
         }
-        .preferredColorScheme(PhoneAppearance.stored(appearanceRaw).colorScheme)
+        .preferredColorScheme(AppAppearance.stored(appearanceRaw).colorScheme)
+        .onAppear { publishAppearance() }
+        .onChange(of: appearanceRaw) { _, _ in publishAppearance() }
+        .onChange(of: colorScheme) { _, _ in publishAppearance() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { publishAppearance() }
+        }
+    }
+
+    private func publishAppearance() {
+        let preference = AppAppearance.stored(appearanceRaw)
+        let phoneScheme: ResolvedAppearance
+        switch colorScheme {
+        case .dark:
+            phoneScheme = .dark
+        case .light:
+            phoneScheme = .light
+        @unknown default:
+            phoneScheme = .light
+        }
+        model.syncWatchAppearance(
+            preference: preference,
+            resolved: ResolvedAppearance.matching(preference: preference, phoneScheme: phoneScheme)
+        )
     }
 
     private func tabPage<Content: View>(_ page: PhoneTab, @ViewBuilder content: () -> Content) -> some View {
@@ -213,11 +238,11 @@ struct CompletedRunsView: View {
 struct PhoneSettingsView: View {
     @ObservedObject var model: PhoneRouteLibraryModel
     @Binding var tab: PhoneTab
-    @AppStorage(PhoneAppearance.storageKey) private var appearanceRaw = PhoneAppearance.system.rawValue
+    @AppStorage(AppAppearance.storageKey) private var appearanceRaw = AppAppearance.system.rawValue
 
-    private var appearanceSelection: Binding<PhoneAppearance> {
+    private var appearanceSelection: Binding<AppAppearance> {
         Binding(
-            get: { PhoneAppearance.stored(appearanceRaw) },
+            get: { AppAppearance.stored(appearanceRaw) },
             set: { appearanceRaw = $0.rawValue }
         )
     }
@@ -248,11 +273,11 @@ struct PhoneSettingsView: View {
             Text("Appearance")
                 .font(.headline)
                 .foregroundStyle(LatchColor.ink)
-            Text("Follow the iPhone setting, or keep RouteLatch in light or dark.")
+            Text("Light and dark are used here and on Apple Watch. System keeps both matched to this iPhone.")
                 .font(.subheadline)
                 .foregroundStyle(LatchColor.muted)
             Picker("Appearance", selection: appearanceSelection) {
-                ForEach(PhoneAppearance.allCases) { appearance in
+                ForEach(AppAppearance.allCases) { appearance in
                     Text(appearance.title).tag(appearance)
                 }
             }
