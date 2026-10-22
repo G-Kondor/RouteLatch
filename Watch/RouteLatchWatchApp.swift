@@ -84,7 +84,7 @@ private struct WatchRoot: View {
 
     var body: some View {
         let palette = LatchColor.resolved(
-            preferred: colorScheme(for: model.phoneResolvedAppearance),
+            preferred: phoneColorScheme(for: model.phoneResolvedAppearance),
             system: systemColorScheme
         )
         ZStack {
@@ -110,7 +110,7 @@ private struct WatchRoot: View {
     }
 }
 
-private func colorScheme(for appearance: ResolvedAppearance?) -> ColorScheme? {
+private func phoneColorScheme(for appearance: ResolvedAppearance?) -> ColorScheme? {
     switch appearance {
     case .light:
         .light
