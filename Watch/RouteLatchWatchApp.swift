@@ -70,19 +70,42 @@ struct RouteLatchWatchApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ZStack {
-                WatchRouteLibraryView(model: model)
-                if anchor.showsDetachedRun, let run = anchor.model {
-                    NavigationStack {
-                        RunScreen(model: run)
-                    }
-                    .background(LatchColor.canvas)
-                    .zIndex(1)
+            WatchRoot(model: model, anchor: anchor)
+        }
+    }
+}
+
+/// Reads the Watch's own scheme from outside the override, then paints with the iPhone selection.
+private struct WatchRoot: View {
+    @ObservedObject var model: WatchRouteLibraryModel
+    @ObservedObject var anchor: WorkoutSessionAnchor
+    @Environment(\.colorScheme) private var systemColorScheme
+    @Environment(\.scenePhase) private var scenePhase
+
+    var body: some View {
+        let palette = LatchColor.resolved(
+            preferred: colorScheme(for: model.phoneResolvedAppearance),
+            system: systemColorScheme
+        )
+        ZStack {
+            WatchRouteLibraryView(model: model)
+            if anchor.showsDetachedRun, let run = anchor.model {
+                NavigationStack {
+                    RunScreen(model: run)
                 }
+                .background(palette.canvas)
+                .zIndex(1)
             }
-            .environmentObject(anchor)
-            .tint(LatchColor.accent)
-            .preferredColorScheme(colorScheme(for: model.phoneResolvedAppearance))
+        }
+        .background(palette.canvas)
+        .environmentObject(anchor)
+        .environment(\.latchColor, palette)
+        .environment(\.colorScheme, palette.colorScheme)
+        .preferredColorScheme(model.phoneResolvedAppearance == nil ? nil : palette.colorScheme)
+        .tint(palette.accent)
+        .onAppear { model.applyReceivedAppearance() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { model.applyReceivedAppearance() }
         }
     }
 }

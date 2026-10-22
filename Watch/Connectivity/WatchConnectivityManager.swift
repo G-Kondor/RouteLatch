@@ -22,7 +22,28 @@ final class WatchConnectivityManager: NSObject {
         self.runStore = runStore
         super.init()
         Self.shared = self
-        if WCSession.isSupported() { WCSession.default.delegate = self; WCSession.default.activate() }
+    }
+
+    func activate() {
+        guard WCSession.isSupported() else { return }
+        let session = WCSession.default
+        session.delegate = self
+        session.activate()
+    }
+
+    func applyReceivedAppearance() {
+        guard WCSession.isSupported() else { return }
+        guard let snapshot = AppearanceSync.snapshot(from: WCSession.default.receivedApplicationContext) else { return }
+        publishAppearance(snapshot)
+    }
+
+    func requestAppearanceFromPhone() {
+        guard WCSession.isSupported() else { return }
+        let session = WCSession.default
+        guard session.activationState == .activated, session.isReachable else { return }
+        session.sendMessage([AppearanceSync.requestKey: "1"], replyHandler: nil) { error in
+            watchConnectivityLogger.error("Could not ask iPhone for the appearance: \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     static func queueCompletedRun(_ run: RecordedRun) throws {
@@ -60,6 +81,7 @@ extension WatchConnectivityManager: WCSessionDelegate {
             if let error { self?.onTransferError?(error.localizedDescription) }
             else { self?.transferPendingRuns(using: .default) }
             if let snapshot { self?.publishAppearance(snapshot) }
+            self?.requestAppearanceFromPhone()
         }
     }
 
@@ -71,10 +93,29 @@ extension WatchConnectivityManager: WCSessionDelegate {
     }
 
     private func publishAppearance(_ snapshot: AppearanceSnapshot) {
+        let changed = appearance != snapshot
         appearance = snapshot
         WorkoutWidgetStore.writeResolvedAppearance(snapshot.resolved.rawValue)
-        WidgetCenter.shared.reloadTimelines(ofKind: WorkoutWidgetStore.widgetKind)
+        if changed {
+            WidgetCenter.shared.reloadTimelines(ofKind: WorkoutWidgetStore.widgetKind)
+        }
         onAppearanceReceived?(snapshot)
+    }
+
+    nonisolated func sessionReachabilityDidChange(_ session: WCSession) {
+        let snapshot = AppearanceSync.snapshot(from: session.receivedApplicationContext)
+        let reachable = session.isReachable
+        Task { @MainActor [weak self] in
+            if let snapshot { self?.publishAppearance(snapshot) }
+            if reachable { self?.requestAppearanceFromPhone() }
+        }
+    }
+
+    nonisolated func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
+        guard let snapshot = AppearanceSync.snapshot(from: message) else { return }
+        Task { @MainActor [weak self] in
+            self?.publishAppearance(snapshot)
+        }
     }
     nonisolated func session(_ session: WCSession, didReceive file: WCSessionFile) {
         do {

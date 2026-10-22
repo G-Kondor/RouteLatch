@@ -28,6 +28,7 @@ final class WatchRouteLibraryModel: ObservableObject {
         connectivity.onAppearanceReceived = { [weak self] snapshot in
             self?.phoneResolvedAppearance = snapshot.resolved
         }
+        connectivity.activate()
         if let appearance = connectivity.appearance {
             phoneResolvedAppearance = appearance.resolved
         }
@@ -65,6 +66,11 @@ final class WatchRouteLibraryModel: ObservableObject {
         case let .failed(message):
             errorMessage = "The bundled test route could not be installed: \(message)"
         }
+    }
+
+    func applyReceivedAppearance() {
+        connectivity.applyReceivedAppearance()
+        connectivity.requestAppearanceFromPhone()
     }
 
     func reload() {
