@@ -10,9 +10,20 @@ final class AppearanceSyncTests: XCTestCase {
     }
 
     func testAppearancePayloadRoundTripsThroughWatchContext() {
-        let payload = AppearanceSync.payload(preference: .dark, resolved: .dark)
+        let encoded = AppearanceSync.payload(preference: .dark, resolved: .dark)
+        var context: [String: Any] = [:]
+        for (key, value) in encoded { context[key] = value }
         let snapshot = AppearanceSnapshot(preference: .dark, resolved: .dark)
-        XCTAssertEqual(AppearanceSync.snapshot(from: payload), snapshot)
+        XCTAssertEqual(AppearanceSync.snapshot(from: context), snapshot)
+    }
+
+    func testAppearanceRequestIsNotAThemeSnapshot() {
+        let message: [String: Any] = [AppearanceSync.requestKey: "1"]
+        XCTAssertTrue(AppearanceSync.isRequest(message))
+        XCTAssertNil(AppearanceSync.snapshot(from: message))
+        var theme: [String: Any] = [:]
+        for (key, value) in AppearanceSync.payload(preference: .dark, resolved: .dark) { theme[key] = value }
+        XCTAssertFalse(AppearanceSync.isRequest(theme))
     }
 
     func testAppearancePayloadIgnoresIncompleteOrUnknownValues() {

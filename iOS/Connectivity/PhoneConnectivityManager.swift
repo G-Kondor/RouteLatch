@@ -38,6 +38,7 @@ final class PhoneConnectivityManager: NSObject, ObservableObject {
         super.init()
         session?.delegate = self
         session?.activate()
+        resendAppearance()
     }
 
     func status(for route: Route) -> RouteTransferStatus { statuses[route.id] ?? .notSent }
@@ -111,7 +112,31 @@ final class PhoneConnectivityManager: NSObject, ObservableObject {
         pushAppearance(using: session)
     }
 
+    /// Sends the theme saved on this iPhone. Explicit Light and Dark do not need the UI on screen.
+    func resendAppearance() {
+        if pendingAppearance == nil {
+            let preference = AppAppearance.stored(UserDefaults.standard.string(forKey: AppAppearance.storageKey) ?? "")
+            let storedResolved = ResolvedAppearance(rawValue: UserDefaults.standard.string(forKey: AppAppearance.resolvedStorageKey) ?? "")
+            switch preference {
+            case .light:
+                syncAppearance(preference: .light, resolved: .light)
+            case .dark:
+                syncAppearance(preference: .dark, resolved: .dark)
+            case .system:
+                guard let storedResolved else { return }
+                syncAppearance(preference: .system, resolved: storedResolved)
+            }
+            return
+        }
+        guard let session, session.activationState == .activated else {
+            session?.activate()
+            return
+        }
+        pushAppearance(using: session)
+    }
+
     func syncAppearance(preference: AppAppearance, resolved: ResolvedAppearance) {
+        UserDefaults.standard.set(resolved.rawValue, forKey: AppAppearance.resolvedStorageKey)
         pendingAppearance = AppearanceSync.payload(preference: preference, resolved: resolved)
         guard let session else { return }
         guard session.activationState == .activated else {
@@ -123,16 +148,25 @@ final class PhoneConnectivityManager: NSObject, ObservableObject {
 
     private func pushAppearance(using session: WCSession) {
         guard let pendingAppearance else { return }
-        guard session.isPaired, session.isWatchAppInstalled else { return }
+        guard session.isPaired else { return }
         let current = session.applicationContext
         let unchanged = pendingAppearance.allSatisfy { current[$0.key] as? String == $0.value }
-        guard !unchanged else { return }
-        var context = current
-        for (key, value) in pendingAppearance { context[key] = value }
-        do {
-            try session.updateApplicationContext(context)
-        } catch {
-            phoneConnectivityLogger.error("Could not send appearance to Apple Watch: \(error.localizedDescription, privacy: .public)")
+        if !unchanged {
+            var context = current
+            for (key, value) in pendingAppearance { context[key] = value }
+            do {
+                try session.updateApplicationContext(context)
+            } catch {
+                phoneConnectivityLogger.error("Could not send appearance to Apple Watch: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+        // The latest context can sit unread while the Watch app is already open.
+        // A direct message updates that foreground app immediately.
+        guard session.isReachable else { return }
+        var payload: [String: Any] = [:]
+        for (key, value) in pendingAppearance { payload[key] = value }
+        session.sendMessage(payload, replyHandler: nil) { error in
+            phoneConnectivityLogger.error("Could not deliver appearance to the open Apple Watch: \(error.localizedDescription, privacy: .public)")
         }
     }
 }
@@ -144,6 +178,13 @@ extension PhoneConnectivityManager: WCSessionDelegate {
     }
     nonisolated func sessionWatchStateDidChange(_ session: WCSession) {
         Task { @MainActor [weak self] in self?.refreshWatchState() }
+    }
+    nonisolated func sessionReachabilityDidChange(_ session: WCSession) {
+        Task { @MainActor [weak self] in self?.refreshWatchState() }
+    }
+    nonisolated func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
+        guard AppearanceSync.isRequest(message) else { return }
+        Task { @MainActor [weak self] in self?.resendAppearance() }
     }
     nonisolated func sessionDidBecomeInactive(_ session: WCSession) {}
     nonisolated func sessionDidDeactivate(_ session: WCSession) { session.activate() }

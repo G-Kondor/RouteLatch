@@ -7,6 +7,7 @@ public enum AppAppearance: String, Codable, CaseIterable, Identifiable, Sendable
     case dark
 
     public static let storageKey = "RouteLatch.appearance"
+    public static let resolvedStorageKey = "RouteLatch.appearanceResolvedPhone"
     public static let preferenceContextKey = "RouteLatch.appearancePreference"
     public static let resolvedContextKey = "RouteLatch.appearanceResolved"
 
@@ -46,6 +47,12 @@ public struct AppearanceSnapshot: Equatable, Sendable {
 }
 
 public enum AppearanceSync {
+    public static let requestKey = "RouteLatch.appearanceRequest"
+
+    public static func isRequest(_ message: [String: Any]) -> Bool {
+        message[requestKey] as? String != nil
+    }
+
     public static func payload(preference: AppAppearance, resolved: ResolvedAppearance) -> [String: String] {
         [
             AppAppearance.preferenceContextKey: preference.rawValue,
