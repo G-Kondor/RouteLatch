@@ -8,16 +8,18 @@ struct RouteLibraryView: View {
     @ObservedObject var model: PhoneRouteLibraryModel
     @Binding var tab: PhoneTab
     @Binding var importing: Bool
+    @Binding var selectedRoute: Route?
     @State private var routeToDelete: Route?
     @State private var routeToRename: Route?
     @State private var newName = ""
-    @State private var selectedRoute: Route?
 
     var body: some View {
         NavigationStack {
             List {
                 plainRow { header }
-                if model.routes.isEmpty {
+                if !model.areRoutesReady {
+                    plainRow { LibraryLoadingCard() }
+                } else if model.routes.isEmpty {
                     plainRow { emptyState }
                 } else {
                     ForEach(model.routes) { route in

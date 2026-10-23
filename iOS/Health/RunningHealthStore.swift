@@ -19,6 +19,7 @@ final class RunningHealthStore: ObservableObject {
     @Published private(set) var access: HealthAccess
     @Published private(set) var isLoading = false
     @Published private(set) var hasFetched = false
+    @Published private(set) var revision = 0
     @Published private(set) var statusMessage: String?
 
     private let store = HKHealthStore()
@@ -60,6 +61,7 @@ final class RunningHealthStore: ObservableObject {
         }
         do {
             runs = try await loadRuns()
+            revision += 1
             statusMessage = nil
             lastFetch = Date()
         } catch {
@@ -180,11 +182,12 @@ final class RunningHealthStore: ObservableObject {
         guard let type = HKQuantityType.quantityType(forIdentifier: .heartRate) else { return [] }
         let unit = HKUnit.count().unitDivided(by: .minute())
         let samples: [HKQuantitySample] = await samples(type: type, predicate: HKQuery.predicateForObjects(from: workout), limit: 4_000)
-        return samples.compactMap { sample in
+        let series = samples.compactMap { sample -> AnalyticsHeartRateSample? in
             let bpm = sample.quantity.doubleValue(for: unit)
             guard bpm.isFinite else { return nil }
             return AnalyticsHeartRateSample(timestamp: sample.startDate, beatsPerMinute: bpm)
         }
+        return RunAnalytics.thinnedHeartRateSamples(series)
     }
 
     private func routeTrack(for workout: HKWorkout) async -> [AnalyticsTrackSample] {

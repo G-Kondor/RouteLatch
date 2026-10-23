@@ -11,14 +11,25 @@ final class PhoneRouteLibraryModel: ObservableObject {
     @Published private(set) var routes: [Route] = []
     @Published private(set) var completedRuns: [RecordedRun] = []
     @Published private(set) var isImporting = false
+    @Published private(set) var areRoutesReady = false
+    @Published private(set) var areRunsReady = false
+    /// Bumps when saved runs change so analytics can reuse an unchanged snapshot.
+    @Published private(set) var contentRevision = 0
     @Published var errorMessage: String?
     @Published var storageWarning: String?
     let connectivity: PhoneConnectivityManager
     let strava: StravaManager
+    let health: RunningHealthStore
+    /// Holds the last analytics snapshot. It is not published, so filling it does not redraw the shell.
+    let analyticsScreenStore = AnalyticsScreenStore()
     let runStore: RecordedRunFileStore
     private var connectivityCancellable: AnyCancellable?
     private let importer = GPXImportService()
     private let store: RouteFileStore
+    private var routeGeneration = 0
+    private var runGeneration = 0
+    private var routeWarning: String?
+    private var runWarning: String?
 
     init() {
         let base = (try? GPXImportService.applicationSupportDirectory()) ?? FileManager.default.temporaryDirectory
@@ -26,35 +37,12 @@ final class PhoneRouteLibraryModel: ObservableObject {
         runStore = RecordedRunFileStore(directory: base.appendingPathComponent("CompletedRuns", isDirectory: true))
         connectivity = PhoneConnectivityManager(runStore: runStore)
         strava = StravaManager(runStore: runStore)
+        health = RunningHealthStore()
         connectivityCancellable = connectivity.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
         connectivity.onCompletedRunReceived = { [weak self] _ in
             self?.reloadCompletedRuns()
         }
-        seedBundledRouteIfNeeded()
-        reload()
-        reloadCompletedRuns()
-    }
-
-    private func seedBundledRouteIfNeeded() {
-        let defaults = UserDefaults.standard
-        guard !defaults.bool(forKey: Self.bundledRouteSeedKey),
-              let url = Bundle.main.url(forResource: "DefaultRoute", withExtension: "gpx") else { return }
-        do {
-            var route = try GPXParser().parse(url: url)
-            route.name = "Spartacus 2025 – Terep XL"
-            try store.save(route)
-            defaults.set(true, forKey: Self.bundledRouteSeedKey)
-        } catch RouteStoreError.duplicateRoute {
-            defaults.set(true, forKey: Self.bundledRouteSeedKey)
-        } catch {
-            errorMessage = "The bundled test route could not be installed: \(error.localizedDescription)"
-        }
-    }
-
-    func reload() {
-        let result = store.loadAll()
-        routes = result.routes
-        storageWarning = result.issues.isEmpty ? nil : "Skipped \(result.issues.count) damaged route file(s)."
+        Task { await self.loadInitialLibrary() }
     }
 
     func syncWatchAppearance(preference: AppAppearance, resolved: ResolvedAppearance) {
@@ -66,18 +54,18 @@ final class PhoneRouteLibraryModel: ObservableObject {
     }
 
     func reloadCompletedRuns() {
-        let result = runStore.loadAll()
-        completedRuns = result.runs
-        if !result.issues.isEmpty {
-            storageWarning = "Skipped \(result.issues.count) damaged completed run file(s)."
-        }
-        strava.updateLocalStatuses(for: completedRuns)
+        let generation = beginRunLoad()
+        Task { await self.reloadRuns(generation: generation) }
     }
 
     func delete(_ run: RecordedRun) {
         do {
             try runStore.delete(run)
-            reloadCompletedRuns()
+            completedRuns.removeAll { $0.id == run.id }
+            strava.updateLocalStatuses(for: completedRuns)
+            contentRevision += 1
+            let generation = beginRunLoad()
+            Task { await self.reloadRuns(generation: generation) }
         } catch {
             phoneLibraryLogger.error("Completed run deletion failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
@@ -91,6 +79,7 @@ final class PhoneRouteLibraryModel: ObservableObject {
         }
         isImporting = true
         let importer = self.importer
+        let store = self.store
         Task {
             defer { isImporting = false }
             do {
@@ -99,7 +88,8 @@ final class PhoneRouteLibraryModel: ObservableObject {
                 }.value
                 do { try store.save(route) }
                 catch { importer.removeProvenance(for: route); throw error }
-                reload()
+                let generation = beginRouteLoad()
+                await reloadRoutes(generation: generation)
             } catch {
                 phoneLibraryLogger.error("Route import failed: \(error.localizedDescription, privacy: .public)")
                 errorMessage = error.localizedDescription
@@ -111,7 +101,9 @@ final class PhoneRouteLibraryModel: ObservableObject {
         do {
             try store.delete(route)
             importer.removeProvenance(for: route)
-            reload()
+            routes.removeAll { $0.id == route.id }
+            let generation = beginRouteLoad()
+            Task { await self.reloadRoutes(generation: generation) }
         } catch {
             phoneLibraryLogger.error("Route deletion failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
@@ -127,6 +119,8 @@ final class PhoneRouteLibraryModel: ObservableObject {
             try store.save(updated)
             routes[index] = updated
             connectivity.markRouteChanged(updated.id)
+            let generation = beginRouteLoad()
+            Task { await self.reloadRoutes(generation: generation) }
         }
         catch {
             phoneLibraryLogger.error("Route rename failed: \(error.localizedDescription, privacy: .public)")
@@ -146,9 +140,97 @@ final class PhoneRouteLibraryModel: ObservableObject {
             try store.save(updated)
             routes[index] = updated
             connectivity.markRouteChanged(updated.id)
+            let generation = beginRouteLoad()
+            Task { await self.reloadRoutes(generation: generation) }
         } catch {
             phoneLibraryLogger.error("Target pace save failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
         }
     }
+
+    private func loadInitialLibrary() async {
+        await seedBundledRouteIfNeeded()
+        let routeToken = beginRouteLoad()
+        let runToken = beginRunLoad()
+        async let loadedRoutes: Void = reloadRoutes(generation: routeToken)
+        async let loadedRuns: Void = reloadRuns(generation: runToken)
+        _ = await (loadedRoutes, loadedRuns)
+    }
+
+    private func seedBundledRouteIfNeeded() async {
+        let defaults = UserDefaults.standard
+        guard !defaults.bool(forKey: Self.bundledRouteSeedKey),
+              let url = Bundle.main.url(forResource: "DefaultRoute", withExtension: "gpx") else { return }
+        let store = store
+        let result = await Task.detached(priority: .userInitiated) {
+            PhoneLibrarySeed.install(from: url, into: store)
+        }.value
+        switch result {
+        case .seeded, .alreadyPresent:
+            defaults.set(true, forKey: Self.bundledRouteSeedKey)
+        case .failed(let message):
+            errorMessage = "The bundled test route could not be installed: \(message)"
+        }
+    }
+
+    private func beginRouteLoad() -> Int {
+        routeGeneration += 1
+        return routeGeneration
+    }
+
+    private func beginRunLoad() -> Int {
+        runGeneration += 1
+        return runGeneration
+    }
+
+    private func reloadRoutes(generation: Int) async {
+        let store = store
+        let result = await Task.detached(priority: .userInitiated) {
+            store.loadAll()
+        }.value
+        guard generation == routeGeneration else { return }
+        routes = result.routes
+        routeWarning = result.issues.isEmpty ? nil : "Skipped \(result.issues.count) damaged route file(s)."
+        publishWarning()
+        areRoutesReady = true
+    }
+
+    private func reloadRuns(generation: Int) async {
+        let runStore = runStore
+        let result = await Task.detached(priority: .userInitiated) {
+            runStore.loadAll()
+        }.value
+        guard generation == runGeneration else { return }
+        completedRuns = result.runs
+        runWarning = result.issues.isEmpty ? nil : "Skipped \(result.issues.count) damaged completed run file(s)."
+        publishWarning()
+        strava.updateLocalStatuses(for: completedRuns)
+        contentRevision += 1
+        areRunsReady = true
+    }
+
+    private func publishWarning() {
+        storageWarning = runWarning ?? routeWarning
+    }
+}
+
+private enum PhoneLibrarySeed {
+    static func install(from url: URL, into store: RouteFileStore) -> PhoneSeedResult {
+        do {
+            var route = try GPXParser().parse(url: url)
+            route.name = "Spartacus 2025 – Terep XL"
+            try store.save(route)
+            return .seeded
+        } catch RouteStoreError.duplicateRoute {
+            return .alreadyPresent
+        } catch {
+            return .failed(error.localizedDescription)
+        }
+    }
+}
+
+private enum PhoneSeedResult: Sendable {
+    case seeded
+    case alreadyPresent
+    case failed(String)
 }

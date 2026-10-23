@@ -56,6 +56,20 @@ final class RunAnalyticsTests: XCTestCase {
         XCTAssertEqual(snapshot.heartRateOrigin, .recordedRun)
     }
 
+    func testThinnedHeartRateSamplesKeepTheSeriesEndsAndTheZoneTime() {
+        var samples: [AnalyticsHeartRateSample] = []
+        for second in 0...60 {
+            samples.append(.init(timestamp: start.addingTimeInterval(TimeInterval(second)), beatsPerMinute: 140))
+        }
+        let thinned = RunAnalytics.thinnedHeartRateSamples(samples)
+        XCTAssertEqual(thinned.count, 13)
+        XCTAssertEqual(thinned.first?.timestamp, start)
+        XCTAssertEqual(thinned.last?.timestamp, start.addingTimeInterval(60))
+        let snapshot = snapshot(activities: [activity(samples: thinned, heartSource: .health)], settings: HeartRateZoneSettings(age: 30))
+        let endurance = snapshot.zones.first { $0.zone == .endurance }
+        XCTAssertEqual(endurance?.duration ?? 0, 60, accuracy: 0.01)
+    }
+
     func testKilometerSplitsScaleAShortTrackToTheSavedDistance() {
         let track = [
             AnalyticsTrackSample(latitude: 47.5, longitude: 19, elevationMeters: 100, timestamp: start),

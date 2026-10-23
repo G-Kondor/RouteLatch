@@ -5,14 +5,16 @@ struct DashboardView: View {
     @ObservedObject var model: PhoneRouteLibraryModel
     @Binding var tab: PhoneTab
     @Binding var importing: Bool
-    @State private var selectedRoute: Route?
+    @Binding var selectedRoute: Route?
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     header
-                    if let featured {
+                    if !model.areRoutesReady || !model.areRunsReady {
+                        LibraryLoadingCard()
+                    } else if let featured {
                         hero(featured)
                         statRow
                         if !otherWaiting.isEmpty {
@@ -74,6 +76,9 @@ struct DashboardView: View {
     }
 
     private var headerSubtitle: String {
+        guard model.areRoutesReady, model.areRunsReady else {
+            return "Loading your courses."
+        }
         guard !model.routes.isEmpty else {
             return "Import a GPX course, then send it to your Watch."
         }

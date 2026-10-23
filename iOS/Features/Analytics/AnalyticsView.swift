@@ -5,8 +5,8 @@ struct AnalyticsView: View {
     @ObservedObject var model: PhoneRouteLibraryModel
     @ObservedObject var health: RunningHealthStore
     @Binding var tab: PhoneTab
+    @Binding var range: AnalyticsRange
     @AppStorage("RouteLatch.analytics.age") private var storedAge = 0
-    @State private var range = AnalyticsRange.week
     @State private var editingAge = false
     @State private var selectedZone: HeartRateZone?
 
@@ -15,7 +15,7 @@ struct AnalyticsView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     screenHeader("Analytics", subtitle: "Pace, effort, and heart-rate zones")
-                    if health.isLoading && !activities.isEmpty {
+                    if model.areRunsReady, health.isLoading, !activities.isEmpty {
                         ProgressView("Reading Apple Health")
                             .tint(LatchColor.accent)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -23,7 +23,9 @@ struct AnalyticsView: View {
                     if let statusMessage = health.statusMessage {
                         statusBanner(statusMessage)
                     }
-                    if activities.isEmpty {
+                    if !model.areRunsReady {
+                        LibraryLoadingCard(title: "Loading your runs")
+                    } else if activities.isEmpty {
                         if health.access == .requested && !health.hasFetched {
                             loadingCard
                         } else {
@@ -56,10 +58,6 @@ struct AnalyticsView: View {
         }
         .latchScreen()
         .task { await health.refresh() }
-        .onChange(of: tab) { _, newValue in
-            guard newValue == .analytics else { return }
-            Task { await health.refresh() }
-        }
         .onChange(of: range) { _, _ in
             selectedZone = nil
         }
@@ -68,23 +66,38 @@ struct AnalyticsView: View {
         }
     }
 
-    private var activities: [AnalyticsActivity] {
-        RunAnalytics.activities(health: health.runs, recorded: model.completedRuns)
-    }
-
-    private var zoneSettings: HeartRateZoneSettings {
-        HeartRateZoneSettings(age: storedAge == 0 ? nil : storedAge)
-    }
-
-    private var snapshot: TrainingSnapshot {
-        RunAnalytics.snapshot(
-            activities: activities,
+    private var screen: AnalyticsScreen {
+        let now = Date()
+        let calendar = Calendar.current
+        let minute = calendar.date(from: calendar.dateComponents([.year, .month, .day, .hour, .minute], from: now)) ?? now
+        let key = AnalyticsScreenKey(
+            healthRevision: health.revision,
+            libraryRevision: model.contentRevision,
             range: range,
-            now: Date(),
-            calendar: .current,
-            zones: zoneSettings
+            age: storedAge,
+            minute: minute
         )
+        let store = model.analyticsScreenStore
+        if store.key == key, let cached = store.screen {
+            return cached
+        }
+        let built = AnalyticsScreen.make(
+            healthRuns: health.runs,
+            recorded: model.completedRuns,
+            range: range,
+            storedAge: storedAge,
+            now: now
+        )
+        store.key = key
+        store.screen = built
+        return built
     }
+
+    private var activities: [AnalyticsActivity] { screen.activities }
+
+    private var zoneSettings: HeartRateZoneSettings { screen.zoneSettings }
+
+    private var snapshot: TrainingSnapshot { screen.snapshot }
 
     private var trainingContent: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -123,7 +136,7 @@ struct AnalyticsView: View {
     }
 
     private var yearCard: some View {
-        let grid = RunAnalytics.activityYear(activities: activities, now: Date(), calendar: .current)
+        let grid = screen.year
         return VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .firstTextBaseline) {
                 Text("Year of activity")
@@ -208,73 +221,9 @@ struct AnalyticsView: View {
         .latchCard()
     }
 
-    private var distanceSamples: [TrendChartSample] {
-        snapshot.buckets.enumerated().map { index, bucket in
-            trendSample(
-                index: index,
-                bucket: bucket,
-                value: bucket.distanceMeters,
-                spoken: bucket.distanceMeters > 0 ? bucket.distanceMeters.formattedDistance : "No distance"
-            )
-        }
-    }
+    private var distanceSamples: [TrendChartSample] { screen.distanceSamples }
 
-    private var paceSamples: [TrendChartSample] {
-        let paces = snapshot.buckets.compactMap(\.paceSecondsPerKilometer)
-        let slowest = paces.max() ?? 0
-        return snapshot.buckets.enumerated().map { index, bucket in
-            let bucketPace = bucket.paceSecondsPerKilometer
-            let plotted = bucketPace.map { slowest - $0 + slowest * 0.2 }
-            return trendSample(
-                index: index,
-                bucket: bucket,
-                value: plotted,
-                spoken: bucketPace.map { self.pace($0) } ?? "No pace"
-            )
-        }
-    }
-
-    private func trendSample(index: Int, bucket: DistanceBucket, value: Double?, spoken: String) -> TrendChartSample {
-        let detail = bucketDetails(bucket, ending: bucketEnd(after: index))
-        return TrendChartSample(
-            id: index,
-            label: bucket.label,
-            title: detail.title,
-            value: value,
-            spoken: spoken,
-            rows: detail.rows
-        )
-    }
-
-    private func bucketEnd(after index: Int) -> Date {
-        if index + 1 < snapshot.buckets.count {
-            return snapshot.buckets[index + 1].start
-        }
-        return snapshot.windowEnd
-    }
-
-    private func bucketDetails(_ bucket: DistanceBucket, ending end: Date) -> (title: String, rows: [ChartDetailRow]) {
-        let matching = snapshot.activities.filter { $0.startedAt >= bucket.start && $0.startedAt < end }
-        var rows = [
-            ChartDetailRow(label: "Distance", value: bucket.distanceMeters > 0 ? bucket.distanceMeters.formattedDistance : "0 m"),
-            ChartDetailRow(label: "Time", value: clock(bucket.duration)),
-            ChartDetailRow(label: "Pace", value: pace(bucket.paceSecondsPerKilometer)),
-            ChartDetailRow(label: "Runs", value: "\(matching.count)")
-        ]
-        if matching.count == 1 {
-            rows.append(ChartDetailRow(label: "Run", value: matching[0].name))
-        }
-        let heartRates = matching.compactMap(\.averageHeartRate)
-        if !heartRates.isEmpty {
-            let average = heartRates.reduce(0, +) / Double(heartRates.count)
-            rows.append(ChartDetailRow(label: "Heart rate", value: "\(Int(average.rounded())) bpm"))
-        }
-        let climbs = matching.compactMap(\.elevationGainMeters)
-        if !climbs.isEmpty {
-            rows.append(ChartDetailRow(label: "Elevation", value: "\(Int(climbs.reduce(0, +).rounded())) m"))
-        }
-        return (bucket.spokenLabel, rows)
-    }
+    private var paceSamples: [TrendChartSample] { screen.paceSamples }
 
     private var heartCard: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -794,6 +743,154 @@ struct AnalyticsView: View {
     }
 
     private func clock(_ seconds: TimeInterval) -> String {
+        let total = max(0, Int(seconds.rounded()))
+        if total >= 3_600 {
+            return String(format: "%d:%02d:%02d", total / 3_600, total % 3_600 / 60, total % 60)
+        }
+        return String(format: "%d:%02d", total / 60, total % 60)
+    }
+}
+
+private struct AnalyticsScreenKey: Equatable {
+    let healthRevision: Int
+    let libraryRevision: Int
+    let range: AnalyticsRange
+    let age: Int
+    let minute: Date
+}
+
+@MainActor
+final class AnalyticsScreenStore {
+    fileprivate var key: AnalyticsScreenKey?
+    fileprivate var screen: AnalyticsScreen?
+}
+
+private struct AnalyticsScreen {
+    let activities: [AnalyticsActivity]
+    let zoneSettings: HeartRateZoneSettings
+    let snapshot: TrainingSnapshot
+    let year: ActivityYearGrid
+    let distanceSamples: [TrendChartSample]
+    let paceSamples: [TrendChartSample]
+
+    static func make(
+        healthRuns: [ImportedHealthRun],
+        recorded: [RecordedRun],
+        range: AnalyticsRange,
+        storedAge: Int,
+        now: Date
+    ) -> AnalyticsScreen {
+        let zoneSettings = HeartRateZoneSettings(age: storedAge == 0 ? nil : storedAge)
+        let activities = RunAnalytics.activities(health: healthRuns, recorded: recorded)
+        let snapshot = RunAnalytics.snapshot(
+            activities: activities,
+            range: range,
+            now: now,
+            calendar: .current,
+            zones: zoneSettings
+        )
+        return AnalyticsScreen(
+            activities: activities,
+            zoneSettings: zoneSettings,
+            snapshot: snapshot,
+            year: RunAnalytics.activityYear(activities: activities, now: now, calendar: .current),
+            distanceSamples: distanceSamples(for: snapshot),
+            paceSamples: paceSamples(for: snapshot)
+        )
+    }
+
+    private static func distanceSamples(for snapshot: TrainingSnapshot) -> [TrendChartSample] {
+        snapshot.buckets.enumerated().map { index, bucket in
+            sample(
+                snapshot: snapshot,
+                index: index,
+                bucket: bucket,
+                value: bucket.distanceMeters,
+                spoken: bucket.distanceMeters > 0 ? bucket.distanceMeters.formattedDistance : "No distance"
+            )
+        }
+    }
+
+    private static func paceSamples(for snapshot: TrainingSnapshot) -> [TrendChartSample] {
+        let paces = snapshot.buckets.compactMap(\.paceSecondsPerKilometer)
+        let slowest = paces.max() ?? 0
+        return snapshot.buckets.enumerated().map { index, bucket in
+            let bucketPace = bucket.paceSecondsPerKilometer
+            let plotted = bucketPace.map { slowest - $0 + slowest * 0.2 }
+            return sample(
+                snapshot: snapshot,
+                index: index,
+                bucket: bucket,
+                value: plotted,
+                spoken: bucketPace.map { pace($0) } ?? "No pace"
+            )
+        }
+    }
+
+    private static func sample(
+        snapshot: TrainingSnapshot,
+        index: Int,
+        bucket: DistanceBucket,
+        value: Double?,
+        spoken: String
+    ) -> TrendChartSample {
+        let end = bucketEnd(snapshot: snapshot, after: index)
+        let detail = bucketDetails(snapshot: snapshot, bucket: bucket, ending: end)
+        return TrendChartSample(
+            id: index,
+            label: bucket.label,
+            title: detail.title,
+            value: value,
+            spoken: spoken,
+            rows: detail.rows
+        )
+    }
+
+    private static func bucketEnd(snapshot: TrainingSnapshot, after index: Int) -> Date {
+        if index + 1 < snapshot.buckets.count {
+            return snapshot.buckets[index + 1].start
+        }
+        return snapshot.windowEnd
+    }
+
+    private static func bucketDetails(
+        snapshot: TrainingSnapshot,
+        bucket: DistanceBucket,
+        ending end: Date
+    ) -> (title: String, rows: [ChartDetailRow]) {
+        let matching = snapshot.activities.filter { $0.startedAt >= bucket.start && $0.startedAt < end }
+        var rows = [
+            ChartDetailRow(label: "Distance", value: bucket.distanceMeters > 0 ? bucket.distanceMeters.formattedDistance : "0 m"),
+            ChartDetailRow(label: "Time", value: clock(bucket.duration)),
+            ChartDetailRow(label: "Pace", value: pace(bucket.paceSecondsPerKilometer)),
+            ChartDetailRow(label: "Runs", value: "\(matching.count)")
+        ]
+        if matching.count == 1 {
+            rows.append(ChartDetailRow(label: "Run", value: matching[0].name))
+        }
+        let heartRates = matching.compactMap(\.averageHeartRate)
+        if !heartRates.isEmpty {
+            let average = heartRates.reduce(0, +) / Double(heartRates.count)
+            rows.append(ChartDetailRow(label: "Heart rate", value: "\(Int(average.rounded())) bpm"))
+        }
+        let climbs = matching.compactMap(\.elevationGainMeters)
+        if !climbs.isEmpty {
+            rows.append(ChartDetailRow(label: "Elevation", value: "\(Int(climbs.reduce(0, +).rounded())) m"))
+        }
+        return (bucket.spokenLabel, rows)
+    }
+
+    private static func pace(_ seconds: Double?) -> String {
+        guard let seconds, seconds.isFinite, seconds > 0 else { return "— /km" }
+        let rounded = Int(seconds.rounded())
+        let minutes = rounded / 60
+        if minutes >= 60 {
+            return String(format: "%d:%02d:%02d /km", minutes / 60, minutes % 60, rounded % 60)
+        }
+        return String(format: "%d:%02d /km", minutes, rounded % 60)
+    }
+
+    private static func clock(_ seconds: TimeInterval) -> String {
         let total = max(0, Int(seconds.rounded()))
         if total >= 3_600 {
             return String(format: "%d:%02d:%02d", total / 3_600, total % 3_600 / 60, total % 60)
