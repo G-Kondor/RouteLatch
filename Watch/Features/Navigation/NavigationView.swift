@@ -210,7 +210,10 @@ struct RunScreen: View {
 
     private var status: some View {
         Group {
-            if model.match == nil {
+            if model.isAcquiringGPS, model.phase == .active {
+                Label("ACQUIRING GPS", systemImage: "location.slash")
+                    .foregroundStyle(latch.muted)
+            } else if model.match == nil {
                 Label(model.phase == .active ? "TRACKING RUN" : "WAITING FOR GPS", systemImage: model.phase == .active ? "location.fill" : "location.slash")
                     .foregroundStyle(latch.accent)
             } else if model.isOffCourse {
@@ -228,6 +231,8 @@ struct RunScreen: View {
     private var courseAlertBanner: some View {
         if model.isOffCourse {
             alertCapsule("OFF COURSE", fill: latch.danger, foreground: latch.onDanger)
+        } else if model.isAcquiringGPS, model.phase == .active {
+            alertCapsule("ACQUIRING GPS", fill: latch.chip, foreground: latch.ink)
         } else if model.isBehindPace {
             alertCapsule("BEHIND PACE", fill: latch.accent, foreground: latch.onAccent)
         }
@@ -506,6 +511,9 @@ struct RunScreen: View {
         }
         if model.phase == .paused {
             return ("PAUSED", latch.accent)
+        }
+        if model.isAcquiringGPS {
+            return ("ACQUIRING GPS", latch.muted)
         }
         if model.isOffCourse {
             return ("OFF COURSE", latch.danger)

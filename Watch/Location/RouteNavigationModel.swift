@@ -48,6 +48,8 @@ final class RouteNavigationModel: NSObject, ObservableObject {
     @Published private(set) var summary: Summary?
     @Published private(set) var startStage: StartStage?
     @Published var errorMessage: String?
+    /// True when no usable GPS sample has arrived in the last several seconds during an active run.
+    @Published private(set) var isAcquiringGPS = false
     let route: Route?
     let targetPaceSecondsPerKilometer: Double?
     private let workout = WorkoutManager()
@@ -68,6 +70,8 @@ final class RouteNavigationModel: NSObject, ObservableObject {
     private var startAttemptID: UUID?
     private var startTask: Task<Void, Never>?
     private var startTimeoutTask: Task<Void, Never>?
+    private var lastUsableGPSTimestamp: Date?
+    private static let gpsAcquisitionThreshold: TimeInterval = 8
 
     init(route: Route?, freeRunTargetPaceSecondsPerKilometer: Double? = nil) {
         self.route = route
@@ -159,6 +163,8 @@ final class RouteNavigationModel: NSObject, ObservableObject {
                 kilometerClosure = KilometerClosureState()
                 kilometerSign = nil
                 kilometerSignDismissTask?.cancel()
+                lastUsableGPSTimestamp = nil
+                isAcquiringGPS = true
                 clearStartAttempt()
                 phase = .active
                 publishWidgetSnapshot(forceReload: true)
@@ -294,7 +300,17 @@ final class RouteNavigationModel: NSObject, ObservableObject {
         elapsed = accumulatedElapsed + (activePeriodStartedAt.map { Date().timeIntervalSince($0) } ?? 0)
         refreshPaceStatus(playHaptics: playPaceHaptics)
         refreshKilometerClosure()
+        refreshGPSAcquisitionState()
         publishWidgetSnapshot()
+    }
+
+    private func refreshGPSAcquisitionState() {
+        guard phase == .active else {
+            isAcquiringGPS = false
+            return
+        }
+        let timeSinceLastGPS = lastUsableGPSTimestamp.map { Date().timeIntervalSince($0) } ?? .infinity
+        isAcquiringGPS = timeSinceLastGPS > Self.gpsAcquisitionThreshold
     }
 
     private func refreshKilometerClosure() {
@@ -425,6 +441,10 @@ extension RouteNavigationModel: CLLocationManagerDelegate {
         Task { @MainActor in
             guard phase == .active, latest.timestamp.timeIntervalSinceNow > -15 else { return }
             location = latest
+            if latest.horizontalAccuracy >= 0, latest.horizontalAccuracy <= 75 {
+                lastUsableGPSTimestamp = Date()
+                isAcquiringGPS = false
+            }
             workout.addActualLocation(latest)
             guard var matcher else {
                 refreshElapsed(playPaceHaptics: false)

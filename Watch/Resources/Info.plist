@@ -29,6 +29,7 @@
 	<key>WKBackgroundModes</key>
 	<array>
 		<string>workout-processing</string>
+		<string>self-fitness-motion</string>
 	</array>
 	<key>WKApplication</key>
 	<true/>
