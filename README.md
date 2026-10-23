@@ -67,7 +67,7 @@ Separate opaque App Store icon sets are included for iOS and watchOS. Their edit
 Enable these capabilities for the Watch target:
 
 - HealthKit;
-- Background Modes → Workout processing.
+- Background Modes → Workout processing, Self fitness motion.
 - App Groups → `group.com.gergokondor.RouteLatchApp.watchkitapp` for both the Watch app and `RouteLatch Workout Widget` extension.
 
 The checked-in Watch entitlements declare HealthKit. The Watch Info.plist includes:
@@ -75,7 +75,17 @@ The checked-in Watch entitlements declare HealthKit. The Watch Info.plist includ
 - `NSHealthShareUsageDescription` for live heart rate;
 - `NSHealthUpdateUsageDescription` for the workout and actual route;
 - `NSLocationWhenInUseUsageDescription` for guidance;
-- `WKBackgroundModes` with `workout-processing`.
+- `WKBackgroundModes` with `workout-processing` and `self-fitness-motion`.
+
+## Running without the iPhone
+
+RouteLatch is designed to work independently on Apple Watch using its built-in GPS. When you start a run and leave your iPhone behind:
+
+1. **GPS handover**: The watch initially uses Assisted GPS from the phone. When the Bluetooth connection is lost, the watch switches to its standalone GPS, which may take 30–60 seconds to acquire a new satellite fix.
+2. **ACQUIRING GPS indicator**: During this transition, the status shows "ACQUIRING GPS" and distance/pace updates may pause. The workout session continues running; only the location updates are temporarily unavailable.
+3. **Automatic recovery**: Once the watch's GPS acquires a fix, tracking resumes automatically. No action is needed.
+
+The workout timer continues counting elapsed time during GPS acquisition. Only locations with reasonable accuracy (≤75 m horizontal) are recorded to the workout route.
 
 WatchConnectivity needs matching signing teams and the companion bundle relationship; it does not require immediate reachability. The phone uses `transferFile`, and the Watch immediately decodes/copies the temporary received file into its own store. Duplicate receipt is idempotent because route IDs map to stable filenames. After persistence, the Watch queues a background receipt acknowledgement so the phone distinguishes “transferred” from “available on Apple Watch.”
 
