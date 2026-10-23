@@ -67,7 +67,7 @@ Separate opaque App Store icon sets are included for iOS and watchOS. Their edit
 Enable these capabilities for the Watch target:
 
 - HealthKit;
-- Background Modes → Workout processing, Self fitness motion.
+- Background Modes → Workout processing.
 - App Groups → `group.com.gergokondor.RouteLatchApp.watchkitapp` for both the Watch app and `RouteLatch Workout Widget` extension.
 
 The checked-in Watch entitlements declare HealthKit. The Watch Info.plist includes:
@@ -75,7 +75,7 @@ The checked-in Watch entitlements declare HealthKit. The Watch Info.plist includ
 - `NSHealthShareUsageDescription` for live heart rate;
 - `NSHealthUpdateUsageDescription` for the workout and actual route;
 - `NSLocationWhenInUseUsageDescription` for guidance;
-- `WKBackgroundModes` with `workout-processing` and `self-fitness-motion`.
+- `WKBackgroundModes` with `workout-processing`.
 
 ## Running without the iPhone
 
