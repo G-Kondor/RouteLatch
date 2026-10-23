@@ -359,8 +359,36 @@ public enum RunAnalytics {
     static let elevationNoiseGateMeters = 3.0
     /// A missing heart-rate sample is not time spent in the previous zone.
     static let maximumHeartRateSampleGap: TimeInterval = 15
+    /// Health series are often one sample a second. Zone time only counts gaps up to
+    /// `maximumHeartRateSampleGap`, so keeping a sample every few seconds preserves the
+    /// totals while making the analytics pass cheap enough to run on the phone.
+    public static let heartRateSampleSpacing: TimeInterval = 5
     static let matchWindow: TimeInterval = 10 * 60
     static let minimumMeasuredHeartRate: TimeInterval = 30
+
+    /// Drops heart-rate samples that are closer together than `spacing`, and always
+    /// keeps the last sample so the series still reaches the end of the run.
+    public static func thinnedHeartRateSamples(
+        _ samples: [AnalyticsHeartRateSample],
+        spacing: TimeInterval = heartRateSampleSpacing
+    ) -> [AnalyticsHeartRateSample] {
+        let ordered = samples.sorted { $0.timestamp < $1.timestamp }
+        let minimumGap = spacing.isFinite ? max(0, spacing) : heartRateSampleSpacing
+        guard ordered.count > 2, minimumGap > 0 else { return ordered }
+        var kept: [AnalyticsHeartRateSample] = []
+        kept.reserveCapacity(min(ordered.count, Int(ordered.count / 4) + 2))
+        kept.append(ordered[0])
+        for index in 1..<ordered.count {
+            let sample = ordered[index]
+            let isLast = index == ordered.count - 1
+            let gap = sample.timestamp.timeIntervalSince(kept[kept.count - 1].timestamp)
+            guard gap > 0 else { continue }
+            if isLast || gap >= minimumGap {
+                kept.append(sample)
+            }
+        }
+        return kept
+    }
 
     public static func activities(health: [ImportedHealthRun], recorded: [RecordedRun]) -> [AnalyticsActivity] {
         var seen = Set<String>()

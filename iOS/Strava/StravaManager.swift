@@ -113,7 +113,6 @@ final class StravaManager: ObservableObject {
         credentials = try? KeychainStore.load(StravaCredentials.self, account: Self.keychainAccount)
         isConnected = credentials != nil
         athleteName = credentials?.athleteName
-        refreshStatuses(for: runStore.loadAll().runs)
     }
 
     func connect() {

@@ -34,32 +34,18 @@ enum PhoneTab: String, CaseIterable, Identifiable {
 
 struct PhoneShellView: View {
     @ObservedObject var model: PhoneRouteLibraryModel
-    @StateObject private var health = RunningHealthStore()
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.scenePhase) private var scenePhase
     @State private var tab = PhoneTab.home
     @State private var importing = false
+    @State private var homeRoute: Route?
+    @State private var libraryRoute: Route?
+    @State private var analyticsRange = AnalyticsRange.week
     @AppStorage(AppAppearance.storageKey) private var appearanceRaw = AppAppearance.system.rawValue
 
     var body: some View {
-        ZStack {
-            tabPage(.home) {
-                DashboardView(model: model, tab: $tab, importing: $importing)
-            }
-            tabPage(.routes) {
-                RouteLibraryView(model: model, tab: $tab, importing: $importing)
-            }
-            tabPage(.runs) {
-                CompletedRunsView(model: model, tab: $tab)
-            }
-            tabPage(.analytics) {
-                AnalyticsView(model: model, health: health, tab: $tab)
-            }
-            tabPage(.settings) {
-                PhoneSettingsView(model: model, tab: $tab)
-            }
-        }
-        .latchScreen()
+        selectedPage
+            .latchScreen()
         .fileImporter(isPresented: $importing, allowedContentTypes: [.gpx, .xml], allowsMultipleSelection: false) { result in
             if case .success(let urls) = result, let url = urls.first { model.importRoute(from: url) }
             if case .failure(let error) = result { model.errorMessage = error.localizedDescription }
@@ -100,12 +86,39 @@ struct PhoneShellView: View {
         )
     }
 
-    private func tabPage<Content: View>(_ page: PhoneTab, @ViewBuilder content: () -> Content) -> some View {
-        content()
-            .opacity(tab == page ? 1 : 0)
-            .allowsHitTesting(tab == page)
-            .accessibilityHidden(tab != page)
-            .zIndex(tab == page ? 1 : 0)
+    /// One page at a time. Hidden tabs used to stay in the tree, so opening the app built
+    /// Analytics (and started Apple Health) and every menu change rebuilt all five pages.
+    @ViewBuilder
+    private var selectedPage: some View {
+        switch tab {
+        case .home:
+            DashboardView(model: model, tab: $tab, importing: $importing, selectedRoute: $homeRoute)
+        case .routes:
+            RouteLibraryView(model: model, tab: $tab, importing: $importing, selectedRoute: $libraryRoute)
+        case .runs:
+            CompletedRunsView(model: model, tab: $tab)
+        case .analytics:
+            AnalyticsView(model: model, health: model.health, tab: $tab, range: $analyticsRange)
+        case .settings:
+            PhoneSettingsView(model: model, tab: $tab)
+        }
+    }
+}
+
+struct LibraryLoadingCard: View {
+    var title = "Loading your courses"
+
+    var body: some View {
+        VStack(spacing: 12) {
+            ProgressView()
+                .tint(LatchColor.accent)
+            Text(title)
+                .font(.headline)
+                .foregroundStyle(LatchColor.ink)
+        }
+        .padding(.vertical, 28)
+        .frame(maxWidth: .infinity)
+        .latchCard()
     }
 }
 
@@ -181,7 +194,12 @@ struct CompletedRunsView: View {
                     .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 6, trailing: 16))
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
-                if model.completedRuns.isEmpty {
+                if !model.areRunsReady {
+                    LibraryLoadingCard(title: "Loading your runs")
+                        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
+                } else if model.completedRuns.isEmpty {
                     emptyRuns
                         .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
                         .listRowSeparator(.hidden)
